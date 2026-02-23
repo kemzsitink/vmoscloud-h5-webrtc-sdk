@@ -20,22 +20,17 @@ export default {
       format: 'iife',
       name: 'ArmcloudRtc',
       sourcemap: true,
-      globals: {
-        'webrtc-adapter': 'adapter',
-        'axios': 'axios',
-        'crypto-js': 'CryptoJS',
-        '@volcengine/rtc': 'VERTC'
-      }
+      inlineDynamicImports: true
     }
   ],
   plugins: [
     resolve({
-      browser: true
+      browser: true,
+      preferBuiltins: false
     }),
     commonjs(),
     typescript({
       tsconfig: './tsconfig.json'
     })
-  ],
-  external: ['webrtc-adapter', 'axios', 'crypto-js', '@volcengine/rtc']
+  ]
 };

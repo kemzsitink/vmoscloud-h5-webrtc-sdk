@@ -237,7 +237,8 @@ class WebRTC {
     this.remotePc = new RTCPeerConnection({
       ...this.socketParams.rtcConfig,
       bundlePolicy: "max-bundle",
-      rtcpMuxPolicy: "require"
+      rtcpMuxPolicy: "require",
+      iceCandidatePoolSize: 10 // Chuẩn bị sẵn cổng mạng để kết nối cực nhanh
     });
   }
 
@@ -963,13 +964,18 @@ class WebRTC {
     this.remotePc.ontrack = (event) => {
       const { remoteVideo: video, remoteAudio: audio } = this.socketParams;
       const mediaType = Number(this.options.mediaType);
+
+      // Ép độ trễ giải mã về 0 tuyệt đối cho tất cả các luồng
+      if ('receiver' in event && 'playoutDelayHint' in event.receiver) {
+        (event.receiver as any).playoutDelayHint = 0;
+      }
+      // Gợi ý trình duyệt ưu tiên xử lý chuyển động nhanh (Low Latency mode)
+      if (event.track) {
+        (event.track as any).contentHint = event.track.kind === 'video' ? 'motion' : 'speech';
+      }
+
       switch (event?.track?.kind) {
         case "video":
-          // Ép trình duyệt KHÔNG ĐƯỢC đệm video. 0 có nghĩa là render ngay lập tức xuống màn hình
-          if ('receiver' in event && 'playoutDelayHint' in event.receiver) {
-            (event.receiver as any).playoutDelayHint = 0;
-          }
-          
           // if (supportsSetCodecPreferences) {
           //   const { codecs } = RTCRtpReceiver.getCapabilities("video")
           //   const preferredCodecs = ["video/H264", "video/VP9", "video/VP8"]
