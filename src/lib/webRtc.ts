@@ -27,6 +27,19 @@ import { addInputElement } from "./textInput";
 import ScreenshotOverlay from "./screenshotOverlay";
 
 class WebRTC {
+  private lastPliCount: number = 0;
+  private _trigIframeReq() {
+    if (this.dataChannel && this.dataChannel.readyState === 'open') {
+      const message = JSON.stringify({
+        touchType: "eventSdk",
+        content: JSON.stringify({
+          type: "requestIFrame",
+        }),
+      });
+      this.dataChannel.send(message);
+      console.log("[SDK] Detect video artifacts (PLI), triggering I-Frame request...");
+    }
+  }
   // 初始外部H5传入DomId
   private initDomId: string = "";
   private initDomWidth: number = 0;
@@ -221,7 +234,11 @@ class WebRTC {
     };
 
     // 初始化当前视频
-    this.remotePc = new RTCPeerConnection(this.socketParams.rtcConfig);
+    this.remotePc = new RTCPeerConnection({
+      ...this.socketParams.rtcConfig,
+      bundlePolicy: "max-bundle",
+      rtcpMuxPolicy: "require"
+    });
   }
 
   private setLogTime(key) {
@@ -948,6 +965,11 @@ class WebRTC {
       const mediaType = Number(this.options.mediaType);
       switch (event?.track?.kind) {
         case "video":
+          // Ép trình duyệt KHÔNG ĐƯỢC đệm video. 0 có nghĩa là render ngay lập tức xuống màn hình
+          if ('receiver' in event && 'playoutDelayHint' in event.receiver) {
+            (event.receiver as any).playoutDelayHint = 0;
+          }
+          
           // if (supportsSetCodecPreferences) {
           //   const { codecs } = RTCRtpReceiver.getCapabilities("video")
           //   const preferredCodecs = ["video/H264", "video/VP9", "video/VP8"]
@@ -1118,8 +1140,11 @@ class WebRTC {
 
     // 监听首帧画面的加载
     const videoElement = this.socketParams.remoteVideo;
-    // 创建消息通道
-    this.dataChannel = this.remotePc.createDataChannel("dataChannel");
+    // 创建消息通道 (Unordered & Unreliable for low-latency control)
+    this.dataChannel = this.remotePc.createDataChannel("dataChannel", {
+      ordered: false,
+      maxRetransmits: 0
+    });
     // 监听通道正常打开
     this.dataChannel.onopen = () => {
       this.handleMediaPlay(this.options.mediaType, true);
@@ -1176,10 +1201,18 @@ class WebRTC {
     this.onRoomMessageReceived();
   }
 
+  private removeRtxFromSdp(sdp: string) {
+    // Loại bỏ payload type dành cho việc truyền lại (RTX) để giảm độ trễ NACK
+    let modifiedSdp = sdp.replace(/a=rtpmap:\d+ rtx\/\d+\r\n/g, "");
+    modifiedSdp = modifiedSdp.replace(/a=fmtp:\d+ apt=\d+\r\n/g, "");
+    return modifiedSdp;
+  }
+
   /** 发送offer */
   private async sendOffer() {
     try {
       const offer = await this.remotePc.createOffer();
+      offer.sdp = this.removeRtxFromSdp(offer.sdp);
       await this.remotePc.setLocalDescription(offer);
 
       this.addReportInfo({
@@ -1257,6 +1290,7 @@ class WebRTC {
   private async sendAnswer() {
     try {
       const answer = await this.remotePc.createAnswer();
+      answer.sdp = this.removeRtxFromSdp(answer.sdp);
       await this.remotePc.setLocalDescription(answer);
 
       this.addReportInfo({
@@ -1489,6 +1523,13 @@ class WebRTC {
       stats.forEach((report) => {
         // 帧率
         if (report.type === "inbound-rtp" && report.kind === "video") {
+          // Monitor pliCount (Picture Loss Indication)
+          const currentPliCount = report.pliCount || 0;
+          if (currentPliCount > this.lastPliCount) {
+            this._trigIframeReq();
+            this.lastPliCount = currentPliCount;
+          }
+
           const framesPerSecond = report.framesPerSecond || 0;
           const message = JSON.stringify({
             content: JSON.stringify({
