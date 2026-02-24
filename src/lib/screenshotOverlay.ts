@@ -226,9 +226,9 @@ export default class ScreenshotOverlay {
     }
     this.videoContainer.style.position = "";
     // 释放引用
-    this.videoContainer = null as any;
-    this.video = null as any;
-    this.canvas = null as any;
-    this.context = null as any;
+    this.videoContainer = null!;
+    this.video = null!;
+    this.canvas = null!;
+    this.context = null!;
   }
 }

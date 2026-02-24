@@ -1,15 +1,13 @@
-// @ts-nocheck
+
 import type { IRTCEngine } from "@volcengine/rtc";
 import huoshanGroupRtc from "./huoshanGroupRtc";
-import axios from "axios";
 import VERTC, {
   StreamIndex,
-  ConnectionState,
   MediaType,
 } from "@volcengine/rtc";
 import Shake from "./shake";
-import { COMMON_CODE, LOG_TYPE } from "./constant";
-import type { CustomDefinition } from "./type";
+import { LOG_TYPE } from "./constant";
+import type { CustomDefinition, RTCOptions, SDKCallbacks, LogTime, RoomMessage, ReportEntry, TouchConfig, CoordsInfo } from "./type";
 import type { TouchInfo } from "./types/webrtcType";
 import { generateTouchCoord } from "./mixins";
 import { isMobile, isTouchDevice } from "./utils";
@@ -27,7 +25,7 @@ class HuoshanRTC {
   private hasPushDown: boolean = false;
   private enableMicrophone: boolean = true;
   private enableCamera: boolean = true;
-  private screenShotInstance: ScreenshotOverlay;
+  private screenShotInstance!: ScreenshotOverlay;
   private isFirstRotate: boolean = false;
   private remoteResolution = {
     width: 0,
@@ -35,7 +33,7 @@ class HuoshanRTC {
   };
 
   // 触摸信息
-  private touchConfig: any = {
+  private touchConfig: TouchConfig = {
     action: 0, // 0 按下 1 抬起 2 触摸中
     widthPixels: document.body.clientWidth,
     heightPixels: document.body.clientHeight,
@@ -46,19 +44,19 @@ class HuoshanRTC {
   };
   // 触摸坐标信息
   private touchInfo: TouchInfo = generateTouchCoord();
-  private options: any;
+  private options: RTCOptions;
 
   private engine: IRTCEngine | undefined;
   private groupEngine: IRTCEngine | undefined;
-  private groupRtc: any | undefined;
+  private groupRtc: huoshanGroupRtc | undefined;
   private inputElement: HTMLInputElement | undefined;
 
-  public roomMessage: any = {};
+  public roomMessage: RoomMessage = {};
 
   // 回收时间定时器
-  public autoRecoveryTimer: any = null;
+  public autoRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
 
-  public errorInfo: any = [];
+  public errorInfo: ReportEntry[] = [];
 
   public isFirstFrame: boolean = false;
 
@@ -86,15 +84,15 @@ class HuoshanRTC {
   };
 
   // 回调函数集合
-  public callbacks: any = {};
+  public callbacks: SDKCallbacks;
 
-  public logTime: any = {};
+  public logTime: LogTime;
   public remoteUserId: string = "";
-  private rotateType: number;
-  private videoDeviceId: string;
-  private audioDeviceId: string;
+  private rotateType!: number;
+  private videoDeviceId!: string;
+  private audioDeviceId!: string;
 
-  constructor(viewId: string, params: any, callbacks: any, logTime: any) {
+  constructor(viewId: string, params: RTCOptions, callbacks: SDKCallbacks, logTime: LogTime) {
     // console.log("HuoshanRTC initialized", params);
     const { masterIdPrefix, padCode } = params;
     this.initDomId = viewId;
@@ -126,20 +124,19 @@ class HuoshanRTC {
   }
 
   /** 浏览器是否支持 */
-  // eslint-disable-next-line class-methods-use-this
-  isSupported() {
+  isSupported(): Promise<boolean> {
     return VERTC.isSupported();
   }
 
-  setLogTime(key) {
+  setLogTime(key: string): void {
     this.logTime[key] = new Date().getTime();
   }
-  addReportInfo(info) {
+  addReportInfo(info: { describe: string; error?: unknown; res?: unknown; e?: unknown; msg?: unknown; user?: unknown }): void {
     const time = new Date().getTime();
     this.errorInfo.push({
       type: "WebVolcanoRtc",
       time,
-      timeDiff: time - this.logTime.joinRoom,
+      timeDiff: time - (this.logTime.joinRoom ?? 0),
       info,
     });
   }
@@ -155,25 +152,25 @@ class HuoshanRTC {
   setAudioDeviceId(val: string) {
     this.audioDeviceId = val;
   }
-  sendEventReport(operation) {
+  sendEventReport(operation: string): void {
     if (!this.options.isLog) {
       return;
     }
-    const request = (type, data) => {
-      return;
-      const { baseUrl } = this.options;
-      const url = baseUrl
-        ? `${baseUrl}/openapi/open/clientException/sendInfo`
-        : `https://openapi.armcloud.net/openapi/open/clientException/sendInfo`;
-      axios
-        .post(url, {
-          padCode: this.remoteUserId,
-          errorJson: JSON.stringify(data),
-          type,
-        })
-        .finally(() => {
-          this.errorInfo = [];
-        });
+    const request = (_type: number, _data: unknown) => {
+      // TODO: Enable when logging endpoint is ready
+      // const { baseUrl } = this.options;
+      // const url = baseUrl
+      //   ? `${baseUrl}/openapi/open/clientException/sendInfo`
+      //   : `https://openapi.armcloud.net/openapi/open/clientException/sendInfo`;
+      // axios
+      //   .post(url, {
+      //     padCode: this.remoteUserId,
+      //     errorJson: JSON.stringify(_data),
+      //     type: _type,
+      //   })
+      //   .finally(() => {
+      //     this.errorInfo = [];
+      //   });
     };
 
     const time = new Date().getTime();
@@ -193,10 +190,10 @@ class HuoshanRTC {
       } = this.logTime;
       request(LOG_TYPE.SUCCESS, {
         data: this.errorInfo,
-        joinRoomTime: wsJoinRoom - joinRoom,
-        rtcLinkTime: (rtcSuccess || reconnectSuccess) - joinRoom,
-        totalTime: time - tokenResStart,
-        questServerTime: tokenResEnd - tokenResStart,
+        joinRoomTime: (wsJoinRoom ?? 0) - (joinRoom ?? 0),
+        rtcLinkTime: (rtcSuccess ?? reconnectSuccess ?? 0) - (joinRoom ?? 0),
+        totalTime: time - (tokenResStart ?? 0),
+        questServerTime: (tokenResEnd ?? 0) - (tokenResStart ?? 0),
         type: "WebVolcanoRtc",
       });
     }
@@ -222,7 +219,7 @@ class HuoshanRTC {
       // 若不存在inputElement， 则创建一个隐藏的input输入框
 
       if (!this.options.disable) {
-        addInputElement(this);
+        addInputElement(this as unknown as import('./type').RTCInstance, true);
       }
     }
     this.engine = VERTC.createEngine(this.options.appId);
@@ -284,19 +281,20 @@ class HuoshanRTC {
   }
 
   // 创建群控实例
-  async createGroupEngine(pads = [], config) {
+  async createGroupEngine(pads: string[] = [], config?: Partial<RTCOptions>): Promise<void> {
     this.groupRtc = new huoshanGroupRtc(
-      { ...this.options, ...config },
+      { ...this.options, ...config } as RTCOptions,
       pads,
       this.callbacks
     );
     try {
       const example = await this.groupRtc.getEngine();
       this.groupEngine = example.engine;
-    } catch (error) {
+    } catch (error: unknown) {
+      const err = error as Error & { code?: string };
       this.callbacks.onGroupControlError({
-        code: error.code,
-        msg: error.message,
+        code: err.code,
+        msg: err.message,
       });
     }
   }
@@ -321,7 +319,7 @@ class HuoshanRTC {
     this.engine?.subscribeStream(this.options.clientId, MediaType.AUDIO);
   }
   /** 按顺序发送文本框 */
-  public sendGroupInputString(pads: any, strs: any) {
+  public sendGroupInputString(pads: string[], strs: string[]): void {
     strs?.map((v: string, index: number) => {
       const message = JSON.stringify({
         text: v,
@@ -333,7 +331,7 @@ class HuoshanRTC {
     });
   }
   /**  群控剪切板  */
-  public sendGroupInputClipper(pads: any, strs: any) {
+  public sendGroupInputClipper(pads: string[], strs: string[]): void {
     strs?.map((v: string, index: number) => {
       const message = JSON.stringify({
         text: v,
@@ -388,15 +386,15 @@ class HuoshanRTC {
       // 重置无操作回收定时器
       this.triggerRecoveryTimeCallback();
 
-      !notSendInGroups && this.sendGroupRoomMessage(message);
+      if (!notSendInGroups) this.sendGroupRoomMessage(message);
 
       return await this?.engine?.sendUserMessage(userId, message);
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.callbacks?.onSendUserError(error);
     }
   }
   /** 群控退出房间 */
-  public kickItOutRoom(pads: any) {
+  public kickItOutRoom(pads: string[]): void {
     this.sendGroupRoomMessage(
       JSON.stringify({
         touchType: "kickOutUser",
@@ -405,8 +403,8 @@ class HuoshanRTC {
     );
   }
   /** 群控加入房间 */
-  public joinGroupRoom(pads: any) {
-    const arr = pads?.filter((v: any) => v !== this.remoteUserId);
+  public joinGroupRoom(pads: string[]): void {
+    const arr = pads?.filter((v: string) => v !== this.remoteUserId);
     if (!arr.length || !this.isGroupControl) return;
 
     if (!this.groupRtc && this.isGroupControl) {
@@ -417,7 +415,7 @@ class HuoshanRTC {
   }
 
   /** 进入 RTC 房间 */
-  start(isGroupControl = false, pads = []) {
+  start(isGroupControl = false, pads: string[] = []): void {
     this.isGroupControl = isGroupControl;
     this.addReportInfo({
       describe: "开始加入房间",
@@ -428,12 +426,8 @@ class HuoshanRTC {
       uid: this.options.userId,
       token: this.options.roomToken,
     };
-    const isAutoSubscribeAudio =
-      this.options.mediaType === 1 || this.options.mediaType === 3;
-    const isAutoSubscribeVideo =
-      this.options.mediaType === 2 || this.options.mediaType === 3;
     this.setLogTime("joinRoom");
-    this.engine
+    this.engine!
       .joinRoom(
         config.token,
         config.roomId,
@@ -446,18 +440,17 @@ class HuoshanRTC {
           isAutoSubscribeVideo: false, // 是否自动订阅视频流，默认为自动订阅。
         }
       )
-      .then(async (res) => {
-        const arr = pads?.filter((v: any) => v !== this.remoteUserId);
-        isGroupControl && arr.length && this.createGroupEngine(arr);
+      .then(async (res: unknown) => {
+        const arr = pads?.filter((v: string) => v !== this.remoteUserId);
+        if (isGroupControl && arr.length) this.createGroupEngine(arr);
         this.setLogTime("wsJoinRoom");
         this.addReportInfo({
           describe: "加入房间成功",
           res,
         });
         // 加入房间成功
-        const that = this;
         const { disableContextMenu, clientId: userId } = this.options;
-        const videoDom = document.getElementById(that.videoDomId);
+        const videoDom = document.getElementById(this.videoDomId);
         if (videoDom) {
           videoDom.style.width = "0px";
           videoDom.style.height = "0px";
@@ -477,7 +470,6 @@ class HuoshanRTC {
               e.preventDefault();
             });
           }
-          let scrollTimeout;
           // 监听鼠标滚轮事件
           videoDom.addEventListener("wheel", (e) => {
             // e.preventDefault()
@@ -498,7 +490,7 @@ class HuoshanRTC {
           });
 
           /** 鼠标移出 */
-          videoDom.addEventListener("mouseleave", (e: any) => {
+          videoDom.addEventListener("mouseleave", (e: MouseEvent) => {
             e.preventDefault();
             if (this.options.disable) return;
             // 若未按下时，不发送鼠标移动事件
@@ -517,22 +509,24 @@ class HuoshanRTC {
             e.preventDefault();
 
             if (this.options.disable) return;
-            that.hasPushDown = true;
-            const { allowLocalIMEInCloud, keyboard } = that.options;
-            const { inputStateIsOpen } = that.roomMessage;
+            this.hasPushDown = true;
+            const { allowLocalIMEInCloud, keyboard } = this.options;
+            const { inputStateIsOpen } = this.roomMessage;
             // 处理输入框焦点逻辑
             const shouldHandleFocus =
               (allowLocalIMEInCloud && keyboard === "pad") ||
               keyboard === "local";
 
             if (
-              that.inputElement &&
+              this.inputElement &&
               shouldHandleFocus &&
               typeof inputStateIsOpen === "boolean"
             ) {
-              inputStateIsOpen
-                ? that.inputElement.focus()
-                : that.inputElement.blur();
+              if (inputStateIsOpen) {
+                this.inputElement.focus();
+              } else {
+                this.inputElement.blur();
+              }
             }
 
             this.touchInfo = generateTouchCoord();
@@ -541,12 +535,12 @@ class HuoshanRTC {
             const distanceToTop = videoDomIdRect.top;
             const distanceToLeft = videoDomIdRect.left;
             // 初始化
-            that.touchConfig.properties = [];
-            that.touchConfig.coords = [];
+            this.touchConfig.properties = [];
+            this.touchConfig.coords = [];
             // 计算触摸手指数量
-            const touchCount = isMobileFlag ? e?.touches?.length : 1;
-            that.touchConfig.action = 0; // 按下操作
-            that.touchConfig.pointCount = touchCount;
+            const touchCount = isMobileFlag ? (e as TouchEvent)?.touches?.length : 1;
+            this.touchConfig.action = 0; // 按下操作
+            this.touchConfig.pointCount = touchCount;
             // 手指触控节点宽高
             const bigSide =
               videoDom.clientWidth > videoDom.clientHeight
@@ -558,18 +552,18 @@ class HuoshanRTC {
                 : videoDom.clientWidth;
 
             this.touchConfig.widthPixels =
-              this.rotateType == 1 ? bigSide : smallSide;
+              this.rotateType === 1 ? bigSide : smallSide;
             this.touchConfig.heightPixels =
-              this.rotateType == 1 ? smallSide : bigSide;
+              this.rotateType === 1 ? smallSide : bigSide;
 
             if (
-              this.rotateType == 1 &&
+              this.rotateType === 1 &&
               this.remoteResolution.height > this.remoteResolution.width
             ) {
               this.touchConfig.widthPixels = smallSide;
               this.touchConfig.heightPixels = bigSide;
             } else if (
-              this.rotateType == 0 &&
+              this.rotateType === 0 &&
               this.remoteResolution.width > this.remoteResolution.height
             ) {
               // 竖屏但是远端流是横屏（用户手动旋转屏幕）
@@ -578,15 +572,15 @@ class HuoshanRTC {
             }
 
             for (let i = 0; i < touchCount; i += 1) {
-              const touch = isMobileFlag ? e.touches[i] : e;
-              that.touchConfig.properties[i] = {
+              const touch = isMobileFlag ? (e as TouchEvent).touches[i] : (e as MouseEvent);
+              this.touchConfig.properties[i] = {
                 id: i,
                 toolType: 1,
               };
 
-              let x = touch.offsetX;
-              let y = touch.offsetY;
-              if (x == undefined) {
+              let x = 'offsetX' in touch ? touch.offsetX : undefined;
+              let y = 'offsetX' in touch ? touch.offsetY : undefined;
+              if (x === undefined) {
                 x = touch.clientX - distanceToLeft;
                 y = touch.clientY - distanceToTop;
 
@@ -597,39 +591,39 @@ class HuoshanRTC {
                   x = videoDomIdRect.bottom - touch.clientY;
                   y = touch.clientX - distanceToLeft;
                 } else if (
-                  this.rotateType == 0 &&
+                  this.rotateType === 0 &&
                   this.remoteResolution.width > this.remoteResolution.height
                 ) {
                   x = touch.clientY - distanceToTop;
                   y = videoDomIdRect.right - touch.clientX;
                 }
               }
-              that.touchConfig.coords.push({
+              this.touchConfig.coords.push({
                 ...this.touchInfo,
                 orientation: 0.01 * Math.random(),
-                x: x,
-                y: y,
+                x: x ?? 0,
+                y: y ?? 0,
               });
             }
             const touchConfig = {
               action: touchCount > 1 ? 261 : 0,
-              widthPixels: that.touchConfig.widthPixels,
-              heightPixels: that.touchConfig.heightPixels,
+              widthPixels: this.touchConfig.widthPixels,
+              heightPixels: this.touchConfig.heightPixels,
               pointCount: touchCount,
               touchType: "gesture",
-              properties: that.touchConfig.properties,
-              coords: that.touchConfig.coords,
+              properties: this.touchConfig.properties,
+              coords: this.touchConfig.coords,
             };
             const message = JSON.stringify(touchConfig);
             // console.log('2222触摸开始', message)
-            that.sendUserMessage(userId, message);
+            this.sendUserMessage(userId, message);
           });
           // 触摸中
           videoDom.addEventListener(eventTypeMove, (e) => {
             e.preventDefault();
             if (this.options.disable) return;
             // 若未按下时，不发送鼠标移动事件
-            if (!that.hasPushDown) {
+            if (!this.hasPushDown) {
               return;
             }
             // 获取节点相对于视口的位置信息
@@ -637,31 +631,31 @@ class HuoshanRTC {
             const distanceToTop = videoDomIdRect.top;
             const distanceToLeft = videoDomIdRect.left;
             // 计算触摸手指数量
-            const touchCount = isMobileFlag ? e?.touches?.length : 1;
-            that.touchConfig.action = 2; // 触摸中
-            that.touchConfig.pointCount = touchCount;
-            that.touchConfig.coords = [];
-            const coords = [];
+            const touchCount = isMobileFlag ? (e as TouchEvent)?.touches?.length : 1;
+            this.touchConfig.action = 2; // 触摸中
+            this.touchConfig.pointCount = touchCount;
+            this.touchConfig.coords = [];
+            const coords: CoordsInfo[] = [];
             for (let i = 0; i < touchCount; i += 1) {
-              const touch = isMobileFlag ? e.touches[i] : e;
-              that.touchConfig.properties[i] = {
+              const touch = isMobileFlag ? (e as TouchEvent).touches[i] : (e as MouseEvent);
+              this.touchConfig.properties[i] = {
                 id: i,
                 toolType: 1,
               };
-              let x = touch.offsetX;
-              let y = touch.offsetY;
-              if (x == undefined) {
+              let x = 'offsetX' in touch ? touch.offsetX : undefined;
+              let y = 'offsetX' in touch ? touch.offsetY : undefined;
+              if (x === undefined) {
                 x = touch.clientX - distanceToLeft;
                 y = touch.clientY - distanceToTop;
 
                 if (
-                  this.rotateType == 1 &&
+                  this.rotateType === 1 &&
                   this.remoteResolution.height > this.remoteResolution.width
                 ) {
                   x = videoDomIdRect.bottom - touch.clientY;
                   y = touch.clientX - distanceToLeft;
                 } else if (
-                  this.rotateType == 0 &&
+                  this.rotateType === 0 &&
                   this.remoteResolution.width > this.remoteResolution.height
                 ) {
                   x = touch.clientY - distanceToTop;
@@ -671,53 +665,53 @@ class HuoshanRTC {
               coords.push({
                 ...this.touchInfo,
                 orientation: 0.01 * Math.random(),
-                x: x,
-                y: y,
+                x: x ?? 0,
+                y: y ?? 0,
               });
             }
-            that.touchConfig.coords = coords;
+            this.touchConfig.coords = coords;
             const touchConfig = {
               action: 2,
-              widthPixels: that.touchConfig.widthPixels,
-              heightPixels: that.touchConfig.heightPixels,
+              widthPixels: this.touchConfig.widthPixels,
+              heightPixels: this.touchConfig.heightPixels,
               pointCount: touchCount,
               touchType: "gesture",
-              properties: that.touchConfig.properties,
-              coords: that.touchConfig.coords,
+              properties: this.touchConfig.properties,
+              coords: this.touchConfig.coords,
             };
             const message = JSON.stringify(touchConfig);
             // console.log('2222触摸中', message)
-            that.sendUserMessage(userId, message);
+            this.sendUserMessage(userId, message);
           });
           // 触摸结束
           videoDom.addEventListener(eventTypeEnd, (e) => {
             e.preventDefault();
             if (this.options.disable) return;
-            that.hasPushDown = false; // 按下状态重置
+            this.hasPushDown = false; // 按下状态重置
             if (isMobileFlag) {
-              if (e.touches.length === 0) {
-                that.touchConfig.action = 1; // 抬起
-                const message = JSON.stringify(that.touchConfig);
+              if ((e as TouchEvent).touches.length === 0) {
+                this.touchConfig.action = 1; // 抬起
+                const message = JSON.stringify(this.touchConfig);
                 // console.log('触摸结束', message)
-                that.sendUserMessage(userId, message);
+                this.sendUserMessage(userId, message);
               }
             } else {
-              that.touchConfig.action = 1; // 抬起
-              const message = JSON.stringify(that.touchConfig);
+              this.touchConfig.action = 1; // 抬起
+              const message = JSON.stringify(this.touchConfig);
               // console.log("触摸结束", message);
-              that.sendUserMessage(userId, message);
+              this.sendUserMessage(userId, message);
             }
           });
 
           // 监听广播消息
-          that.onRoomMessageReceived();
-          that.onUserMessageReceived();
-          that.onUserJoined();
-          that.onUserLeave();
-          that.onRemoteVideoFirstFrame();
+          this.onRoomMessageReceived();
+          this.onUserMessageReceived();
+          this.onUserJoined();
+          this.onUserLeave();
+          this.onRemoteVideoFirstFrame();
 
           // 远端摄像头/麦克风采集音视频流的回调
-          that.onUserPublishStream();
+          this.onUserPublishStream();
 
           this.callbacks.onConnectSuccess();
         }
@@ -733,11 +727,11 @@ class HuoshanRTC {
          * 5 连接断开后重连成功,
          * 6 处于 CONNECTION_STATE_DISCONNECTED 状态超过 10 秒，且期间重连未成功。SDK将继续尝试重连
          */
-        that.engine.on(VERTC.events.onConnectionStateChanged, (e) => {
-          that.callbacks.onConnectionStateChanged(e);
+        this.engine?.on(VERTC.events.onConnectionStateChanged, (e: unknown) => {
+          this.callbacks.onConnectionStateChanged(e);
         });
       })
-      .catch((error) => {
+      .catch((error: Error & { code?: number }) => {
         this.addReportInfo({
           describe: "加入房间失败",
           error,
@@ -749,15 +743,15 @@ class HuoshanRTC {
   }
   /** 远端用户离开房间 */
   onUserLeave() {
-    this.engine.on(VERTC.events.onUserLeave, (res) => {
+    this.engine?.on(VERTC.events.onUserLeave, (res: { userInfo: { userId: string } }) => {
       this.callbacks.onUserLeave(res);
     });
   }
   setViewSize(width: number, height: number, rotateType: 0 | 1 = 0) {
-    const h5Dom = document.getElementById(this.initDomId)!;
+    const h5Dom = document.getElementById(this.initDomId);
     const videoDom = document.getElementById(
       this.videoDomId
-    )! as HTMLDivElement;
+    ) as HTMLDivElement | null;
 
     if (h5Dom && videoDom) {
       const setDimensions = (
@@ -772,7 +766,7 @@ class HuoshanRTC {
       // 设置宽高
       setDimensions(h5Dom, width, height);
 
-      if (rotateType == 1) {
+      if (rotateType === 1) {
         setDimensions(videoDom, height, width);
         return;
       }
@@ -796,7 +790,7 @@ class HuoshanRTC {
         describe: "发送updateUiH5信息",
         res,
       });
-    } catch (error) {
+    } catch {
       this.addReportInfo({
         describe: "发送updateUiH5失败",
       });
@@ -805,20 +799,18 @@ class HuoshanRTC {
   }
   /** 远端可见用户加入房间 */
   onUserJoined() {
-    const that = this;
-    const userId = this.options.clientId;
-    that.engine.on(VERTC.events.onUserJoined, (user) => {
+    this.engine?.on(VERTC.events.onUserJoined, (user: { userInfo?: { userId: string } }) => {
       if (user.userInfo?.userId === this.options.clientId) {
         this.addReportInfo({
           describe: "远端用户加入房间",
           user,
         });
         setTimeout(() => {
-          that.updateUiH5();
+          this.updateUiH5();
           // 查询输入状态
-          that.onCheckInputState();
-          that.setKeyboardStyle(that.options.keyboard);
-          that.triggerRecoveryTimeCallback();
+          this.onCheckInputState();
+          this.setKeyboardStyle(this.options.keyboard as "pad" | "local");
+          this.triggerRecoveryTimeCallback();
         }, 300);
       }
     });
@@ -826,7 +818,7 @@ class HuoshanRTC {
 
   /** 视频首帧渲染 */
   onRemoteVideoFirstFrame() {
-    this.engine.on(VERTC.events.onRemoteVideoFirstFrame, async (event) => {
+    this.engine?.on(VERTC.events.onRemoteVideoFirstFrame, async (event: { width: number; height: number }) => {
       console.log("视频首帧渲染回调", event);
       try {
         if (!this.isFirstRotate) {
@@ -841,7 +833,7 @@ class HuoshanRTC {
   /** 离开 RTC 房间 */
   async stop() {
     try {
-      clearTimeout(this.autoRecoveryTimer);
+      clearTimeout(this.autoRecoveryTimer ?? undefined);
       const { clientId, mediaType } = this.options;
       const promises = [
         this.engine?.unsubscribeStream(clientId, mediaType),
@@ -862,26 +854,24 @@ class HuoshanRTC {
       }
       this.inputElement?.remove();
       this.sendEventReport("error");
-      this.groupEngine = null;
-      this.groupRtc = null;
-      this.screenShotInstance = null;
+      this.groupEngine = undefined;
+      this.groupRtc = undefined;
+      this.screenShotInstance = null!;
     } catch (error) {
       return Promise.reject(error);
     }
   }
 
   /** 房间内新增远端摄像头/麦克风采集音视频流的回调 */
-  onUserPublishStream() {
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
-    const that = this;
+  onUserPublishStream(): void {
     const handleUserPublishStream = async (e: {
       userId: string;
-      mediaType: any;
+      mediaType: MediaType;
     }) => {
       if (e.userId === this.options.clientId) {
-        const player: any = document.querySelector(`#${that.videoDomId}`);
+        const player = document.querySelector(`#${this.videoDomId}`) as HTMLDivElement;
 
-        that.addReportInfo({
+        this.addReportInfo({
           describe: "订阅和播放房间内的音视频流",
           e,
         });
@@ -900,17 +890,17 @@ class HuoshanRTC {
         }
       }
     };
-    this.engine.on(VERTC.events.onUserPublishStream, handleUserPublishStream);
+    this.engine?.on(VERTC.events.onUserPublishStream, handleUserPublishStream);
   }
 
   /**
    * 发送摇一摇信息
    */
-  sendShakeInfo(time) {
+  sendShakeInfo(time: number): void {
     const userId = this.options.clientId;
     const shake = new Shake();
     shake.startShakeSimulation(time, (content) => {
-      const getOptions = (sensorType) => {
+      const getOptions = (sensorType: string): string => {
         return JSON.stringify({
           coords: [],
           heightPixels: 0,
@@ -935,22 +925,22 @@ class HuoshanRTC {
     });
   }
 
-  checkInputState(msg: any) {
+  checkInputState(msg: { data: string }): void {
     const { allowLocalIMEInCloud, keyboard } = this.options;
     const msgData = JSON.parse(msg.data);
 
     this.roomMessage.inputStateIsOpen = msgData.isOpen;
     // 仅在 enterkeyhint 存在时设置属性
-    const enterkeyhintText = this.enterkeyhintObj[msgData.imeOptions];
+    const enterkeyhintText = this.enterkeyhintObj[msgData.imeOptions as keyof typeof this.enterkeyhintObj];
     if (enterkeyhintText) {
-      this.inputElement.setAttribute("enterkeyhint", enterkeyhintText);
+      this.inputElement?.setAttribute("enterkeyhint", enterkeyhintText);
     }
     // 处理输入框焦点逻辑
     const shouldHandleFocus =
       (allowLocalIMEInCloud && keyboard === "pad") || keyboard === "local";
 
     if (shouldHandleFocus && typeof msgData.isOpen === "boolean") {
-      msgData.isOpen ? this.inputElement.focus() : this.inputElement.blur();
+      if (msgData.isOpen) { this.inputElement?.focus(); } else { this.inputElement?.blur(); }
     }
   }
 
@@ -976,8 +966,8 @@ class HuoshanRTC {
           this.roomMessage.isVertical = msgData.isVertical;
           // 若宽高没变，则不重新绘制页面
           if (
-            msgData.width == this.remoteResolution.width &&
-            msgData.height == this.remoteResolution.height
+            msgData.width === this.remoteResolution.width &&
+            msgData.height === this.remoteResolution.height
           ) {
             console.log("宽高没变，不重新绘制页面", this.remoteUserId);
             return false;
@@ -998,12 +988,11 @@ class HuoshanRTC {
         }
       }
     };
-    this.engine.on(VERTC.events.onRoomMessageReceived, onRoomMessageReceived);
+    this.engine?.on(VERTC.events.onRoomMessageReceived, onRoomMessageReceived);
   }
 
   /** 监听 onUserMessageReceived 事件 */
   onUserMessageReceived() {
-    const that = this;
     const parseResolution = (resolution: string) => {
       const [width, height] = resolution?.split("*").map(Number);
       return { width, height };
@@ -1014,7 +1003,7 @@ class HuoshanRTC {
     }) => {
       if (e.message) {
         const msg = JSON.parse(e.message);
-        that.addReportInfo({
+        this.addReportInfo({
           describe:
             "收到来自房间中其他用户通过 sendUserMessage 发来的点对点文本消息",
           msg,
@@ -1053,45 +1042,45 @@ class HuoshanRTC {
             this.enableMicrophone && this.enableCamera
               ? MediaType.AUDIO_AND_VIDEO
               : this.enableCamera
-              ? MediaType.VIDEO
-              : MediaType.AUDIO;
+                ? MediaType.VIDEO
+                : MediaType.AUDIO;
           if (msgData.isOpen) {
             if (this.enableCamera) {
               const videoDeviceId =
                 this.videoDeviceId ||
                 (msgData.isFront ? "user" : "environment");
 
-              await that.engine.setVideoCaptureDevice(videoDeviceId);
+              await this.engine?.setVideoCaptureDevice(videoDeviceId);
 
-              await that.engine
-                .startVideoCapture()
-                .then((res) => {
+              await this.engine
+                ?.startVideoCapture()
+                .then((res: unknown) => {
                   this.callbacks.onVideoInit(res);
-                  that.engine.publishStream(MediaType.VIDEO);
+                  this.engine?.publishStream(MediaType.VIDEO);
                 })
-                .catch((err) => {
+                .catch((err: unknown) => {
                   this.callbacks.onVideoError(err);
                 });
             }
 
             if (this.enableMicrophone) {
               if (this.audioDeviceId) {
-                await that.engine.setAudioCaptureDevice(this.audioDeviceId);
+                await this.engine?.setAudioCaptureDevice(this.audioDeviceId);
               }
-              await that.engine
-                .startAudioCapture()
-                .then((res) => {
+              await this.engine
+                ?.startAudioCapture()
+                .then((res: unknown) => {
                   this.callbacks.onAudioInit(res);
-                  that.engine.publishStream(MediaType.AUDIO);
+                  this.engine?.publishStream(MediaType.AUDIO);
                 })
-                .catch((err) => {
+                .catch((err: unknown) => {
                   this.callbacks.onAudioError(err);
                 });
             }
           } else {
-            await that.engine.stopAudioCapture();
-            await that.engine.stopVideoCapture();
-            await that.engine.unpublishStream(pushType);
+            await this.engine?.stopAudioCapture();
+            await this.engine?.stopVideoCapture();
+            await this.engine?.unpublishStream(pushType);
           }
         }
         // 云机、本机键盘使用消息
@@ -1102,23 +1091,23 @@ class HuoshanRTC {
         if (msg.key === "audioControl" && this.enableMicrophone) {
           const msgData = JSON.parse(msg.data);
           if (msgData.isOpen) {
-            that.engine
-              .startAudioCapture()
-              .then((res) => {
+            this.engine
+              ?.startAudioCapture()
+              .then((res: unknown) => {
                 this.callbacks.onAudioInit(res);
-                that.engine.publishStream(MediaType.AUDIO);
+                this.engine?.publishStream(MediaType.AUDIO);
               })
-              .catch((error) => {
+              .catch((error: unknown) => {
                 this.callbacks.onAudioError(error);
               });
           } else {
-            that.engine.stopAudioCapture();
-            that.engine.unpublishStream(MediaType.AUDIO);
+            this.engine?.stopAudioCapture();
+            this.engine?.unpublishStream(MediaType.AUDIO);
           }
         }
       }
     };
-    that.engine.on(VERTC.events.onUserMessageReceived, onUserMessageReceived);
+    this.engine?.on(VERTC.events.onUserMessageReceived, onUserMessageReceived);
   }
 
   /**
@@ -1154,7 +1143,7 @@ class HuoshanRTC {
     if (config.definitionId && config.framerateId && config.bitrateId) {
       const values = Object.values(config);
       // 判断输入值是否为正整数
-      if (values.every((value) => regExp.test(value))) {
+      if (values.every((value) => value !== null && regExp.test(String(value)))) {
         const contentObj = {
           type: "definitionUpdata",
           definitionId: config.definitionId,
@@ -1191,8 +1180,8 @@ class HuoshanRTC {
     };
     const userId = this.options.clientId;
     const message = JSON.stringify(messageObj);
-    this.engine.sendUserMessage(userId, message);
-    return this.engine.pauseAllSubscribedStream(mediaType);
+    this.engine?.sendUserMessage(userId, message);
+    return this.engine?.pauseAllSubscribedStream(mediaType);
   }
 
   /**
@@ -1208,7 +1197,7 @@ class HuoshanRTC {
     this.startPlay();
 
     if (mediaType !== 3) {
-      return this.engine.resumeAllSubscribedStream(mediaType);
+      return this.engine?.resumeAllSubscribedStream(mediaType);
     }
     const contentObj = {
       type: "openAudioAndVideo",
@@ -1221,11 +1210,11 @@ class HuoshanRTC {
     const userId = this.options.clientId;
     const message = JSON.stringify(messageObj);
     this.sendUserMessage(userId, message);
-    return this.engine.resumeAllSubscribedStream(mediaType);
+    return this.engine?.resumeAllSubscribedStream(mediaType);
   }
   async setRemoteVideoRotation(rotation: number) {
-    const player: any = document.querySelector(`#${this.videoDomId}`);
-    await this.engine.setRemoteVideoPlayer(StreamIndex.STREAM_INDEX_MAIN, {
+    const player = document.querySelector(`#${this.videoDomId}`) as HTMLElement;
+    await this.engine?.setRemoteVideoPlayer(StreamIndex.STREAM_INDEX_MAIN, {
       userId: this.options.clientId,
       renderDom: player,
       renderMode: 2,
@@ -1236,11 +1225,11 @@ class HuoshanRTC {
    * 订阅房间内指定的通过摄像头/麦克风采集的媒体流。
    */
   async subscribeStream(mediaType: MediaType) {
-    return await this.engine.subscribeStream(this.options.clientId, mediaType);
+    return await this.engine?.subscribeStream(this.options.clientId, mediaType);
   }
   /** 旋转VIDEO 容器 1 横屏 0 竖屏 */
   rotateContainerVideo(type: 0 | 1 = 0) {
-    const player: any = document.querySelector(`#${this.videoDomId} div`);
+    const player = document.querySelector(`#${this.videoDomId} div`) as HTMLElement | null;
     if (player) {
       let translateY,
         rotate = 0;
@@ -1263,7 +1252,7 @@ class HuoshanRTC {
   }
   /** 旋转截图 */
   setScreenshotRotation(rotation: number = 0) {
-    this.screenShotInstance?.setScreenshotRotation(rotation);
+    this.screenShotInstance?.setScreenshotrotateType(rotation as 0 | 1);
   }
   /** 生成封面图 */
   takeScreenshot(rotation: number = 0) {
@@ -1290,13 +1279,15 @@ class HuoshanRTC {
   /**
    * 取消订阅房间内指定的通过摄像头/麦克风采集的媒体流。
    */
-  unsubscribeStream(mediaType: MediaType) {
-    return this.engine?.unsubscribeStream(this.options.clientId, mediaType);
+  unsubscribeStream(mediaType: MediaType): Promise<void> {
+    return this.engine
+      ? this.engine.unsubscribeStream(this.options.clientId, mediaType)
+      : Promise.resolve();
   }
   /** 截图-保存到本地 */
-  saveScreenShotToLocal() {
+  saveScreenShotToLocal(): Promise<ImageData | undefined> {
     const userId = this.options.clientId;
-    return this.engine.takeRemoteSnapshot(userId, 0);
+    return this.engine ? this.engine.takeRemoteSnapshot(userId, 0) : Promise.resolve(undefined);
   }
 
   /** 截图-保存到云机 */
@@ -1347,7 +1338,7 @@ class HuoshanRTC {
     let targetRotateType;
 
     // 判断是否为 0 或 1
-    if (rotateType == 0 || rotateType == 1) {
+    if (rotateType === 0 || rotateType === 1) {
       targetRotateType = rotateType;
     } else {
       // 根据宽高自动设置旋转类型，
@@ -1363,7 +1354,7 @@ class HuoshanRTC {
   async rotateScreen(type: number) {
     // console.log(1111, `type=${type}`)
     // 获取父元素（调用方）的原始宽度和高度，这里要重新获取，因为外层的div可能宽高发生变化
-    const h5Dom = document.getElementById(this.initDomId)!;
+    const h5Dom = document.getElementById(this.initDomId);
     if (!h5Dom) return;
     this.rotateType = type;
 
@@ -1383,7 +1374,7 @@ class HuoshanRTC {
       smallSide = parentHeight;
     }
 
-    if (type == 1) {
+    if (type === 1) {
       parentWidth = bigSide;
       parentHeight = smallSide;
     } else {
@@ -1405,7 +1396,7 @@ class HuoshanRTC {
 
     const videoDom = document.getElementById(this.videoDomId) as HTMLDivElement;
 
-    if (type == 1) {
+    if (type === 1) {
       const w = videoIsLandscape
         ? this.remoteResolution.width
         : this.remoteResolution.height;
@@ -1585,7 +1576,7 @@ class HuoshanRTC {
   /**  注入视频到相机 */
   injectVideoStream(
     type: "startVideoInjection" | "stopVideoInjection",
-    options?: any
+    options?: { fileUrl?: string; isLoop?: boolean; fileName?: string }
   ) {
     const userId = this.options.clientId;
     if (!userId) return;
@@ -1594,14 +1585,14 @@ class HuoshanRTC {
       content: JSON.stringify(
         type === "startVideoInjection"
           ? {
-              type,
-              fileUrl: options?.fileUrl,
-              isLoop: options?.isLoop ?? true,
-              fileName: options?.fileName,
-            }
+            type,
+            fileUrl: options?.fileUrl,
+            isLoop: options?.isLoop ?? true,
+            fileName: options?.fileName,
+          }
           : {
-              type,
-            }
+            type,
+          }
       ),
     });
     console.log("注入视频到相机", message);

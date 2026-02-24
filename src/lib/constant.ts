@@ -1,19 +1,18 @@
-// @ts-nocheck
 export const COMMON_CODE = {
   SUCCESS: 0,
   FAIL: -1,
   CLOSE: 1,
-};
+} as const;
 
 export const ERROR_CODE = {
   DATA_CHANNEL: 0, // 通道中断
   DELAY: 1, // 获取统计信息时出错 延迟丢包率
-};
+} as const;
 
 export const LOG_TYPE = {
   SUCCESS: 1,
   FAIL: 0,
-};
+} as const;
 
 export enum MEDIA_CONTROL_TYPE {
   // 音频
@@ -31,7 +30,7 @@ export const MEDIA_VOICE_TYPE = {
   VIDEO: 2,
   // 音视频
   AUDIO_VIDEO: 3,
-};
+} as const;
 
 export const PROGRESS_INFO = {
   WS_CONNECT: {
@@ -130,4 +129,4 @@ export const PROGRESS_INFO = {
     code: 310,
     msg: "VIDEO第一帧渲染成功",
   },
-};
+} as const;

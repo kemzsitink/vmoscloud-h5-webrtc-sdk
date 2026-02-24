@@ -1,29 +1,26 @@
-/* eslint-disable lines-between-class-members */
-/* eslint-disable no-useless-return */
-/* eslint-disable prefer-promise-reject-errors */
-/* eslint-disable consistent-return */
-/* eslint-disable eqeqeq */
-// @ts-nocheck
-import "webrtc-adapter";
-import axios from "axios";
 import HuoshanRTC from "./huoshanRtc";
-import WebRTC from "./webRtc";
 import { COMMON_CODE } from "./constant";
-import type { CustomDefinition } from "./type";
+import type { CustomDefinition, SDKInitParams, RTCOptions, LogTime, SDKCallbacks } from "./type";
+
+interface VideoInjectionOptions {
+  fileUrl?: string;
+  isLoop?: boolean;
+  fileName?: string;
+}
 
 class ArmcloudEngine {
   // SDK版本号
   version: string = "1.3.0";
   // rtc实例
-  rtcInstance: any = null;
+  rtcInstance: HuoshanRTC | null = null;
   // rtc初始化参数
-  rtcOptions: any = null;
+  rtcOptions: RTCOptions;
   // rtc回调
-  callbacks: any = null;
-  streamType: any = null;
-  private axiosSource: any = null;
+  callbacks: SDKCallbacks;
+  streamType: number | null = null;
+  private abortController: AbortController | null = null;
 
-  public logTime: any = {
+  public logTime: LogTime = {
     // 获取token前
     tokenResStart: null,
     // 获取token成功后
@@ -46,8 +43,8 @@ class ArmcloudEngine {
     videoTrack: null,
   };
 
-  constructor(params: any) {
-    this.axiosSource = axios.CancelToken.source(); // 创建一个取消令牌
+  constructor(params: SDKInitParams) {
+    this.abortController = new AbortController(); // 创建一个取消令牌
     // 初始化入参
     this.rtcOptions = {
       appId: "", // 火山rtc参数
@@ -70,6 +67,7 @@ class ArmcloudEngine {
       isWsProxy: params.isWsProxy ? JSON.parse(params.isWsProxy) : false,
       manageToken: params.manageToken ?? "",
       masterIdPrefix: params.masterIdPrefix ?? "",
+      uuid: "",
       // 视频流信息
       videoStream: {
         resolution: params?.deviceInfo?.videoStream?.resolution ?? 12, // 分辨率
@@ -84,66 +82,74 @@ class ArmcloudEngine {
       keyboard: params.deviceInfo.keyboard ?? "pad", // 键盘模式
       disableContextMenu: params.deviceInfo.disableContextMenu ?? false, // 是否禁用右键菜单
       saveCloudClipboard: params.deviceInfo.saveCloudClipboard ?? true, // 云机剪切板回调开关
-      videoDeviceId: params.deviceInfo.videoDeviceId, // 摄像头ID
-      audioDeviceId: params.deviceInfo.audioDeviceId, // 麦克风ID
+      videoDeviceId: params.deviceInfo.videoDeviceId ?? "", // 摄像头ID
+      audioDeviceId: params.deviceInfo.audioDeviceId ?? "", // 麦克风ID
     };
 
     this.callbacks = {
       // 初始化回调
-      onInit: params.callbacks.onInit || (() => {}),
+      onInit: params.callbacks.onInit || (() => { }),
       // 连接成功回调
-      onConnectSuccess: params.callbacks.onConnectSuccess || (() => {}),
+      onConnectSuccess: params.callbacks.onConnectSuccess || (() => { }),
       // 连接失败回调
-      onConnectFail: params.callbacks.onConnectFail || (() => {}),
+      onConnectFail: params.callbacks.onConnectFail || (() => { }),
       // 触发自动回收回调
-      onAutoRecoveryTime: params.callbacks.onAutoRecoveryTime || (() => {}),
+      onAutoRecoveryTime: params.callbacks.onAutoRecoveryTime || (() => { }),
       // 自动播放失败回调
-      onAutoplayFailed: params.callbacks.onAutoplayFailed || (() => {}),
+      onAutoplayFailed: params.callbacks.onAutoplayFailed || (() => { }),
       // 运行信息回调
-      onRunInformation: params.callbacks.onRunInformation || (() => {}),
+      onRunInformation: params.callbacks.onRunInformation || (() => { }),
       // 分辨率切换回调
-      onChangeResolution: params.callbacks.onChangeResolution || (() => {}),
+      onChangeResolution: params.callbacks.onChangeResolution || (() => { }),
       // 横竖屏切换回调：0 竖屏 1 横屏
-      onChangeRotate: params.callbacks?.onChangeRotate || (() => {}),
+      onChangeRotate: params.callbacks?.onChangeRotate || (() => { }),
       // 消息透传回调
-      onTransparentMsg: params.callbacks.onTransparentMsg || (() => {}),
+      onTransparentMsg: params.callbacks.onTransparentMsg || (() => { }),
       // 连接状态回调
       onConnectionStateChanged:
-        params.callbacks.onConnectionStateChanged || (() => {}),
+        params.callbacks.onConnectionStateChanged || (() => { }),
       // 错误回调
-      onErrorMessage: params.callbacks.onErrorMessage || (() => {}),
+      onErrorMessage: params.callbacks.onErrorMessage || (() => { }),
       // 剪切板回调
-      onOutputClipper: params.callbacks.onOutputClipper || (() => {}),
+      onOutputClipper: params.callbacks.onOutputClipper || (() => { }),
       // 首帧画面已加载
-      onRenderedFirstFrame: params.callbacks.onRenderedFirstFrame || (() => {}),
+      onRenderedFirstFrame: params.callbacks.onRenderedFirstFrame || (() => { }),
       // 视频采集成功
-      onVideoInit: params.callbacks?.onVideoInit || (() => {}),
+      onVideoInit: params.callbacks?.onVideoInit || (() => { }),
       // 视频采集失败
-      onVideoError: params.callbacks?.onVideoError || (() => {}),
+      onVideoError: params.callbacks?.onVideoError || (() => { }),
       // 音频采集成功
-      onAudioInit: params.callbacks?.onAudioInit || (() => {}),
+      onAudioInit: params.callbacks?.onAudioInit || (() => { }),
       // 音频采集失败
-      onAudioError: params.callbacks?.onAudioError || (() => {}),
+      onAudioError: params.callbacks?.onAudioError || (() => { }),
       // 加载进度相关回调
-      onProgress: params.callbacks?.onProgress || (() => {}),
+      onProgress: params.callbacks?.onProgress || (() => { }),
       // onSocketCallback websocket相关回调
-      onSocketCallback: params.callbacks?.onSocketCallback || (() => {}),
+      onSocketCallback: params.callbacks?.onSocketCallback || (() => { }),
       // 用户离开
-      onUserLeave: params.callbacks?.onUserLeave || (() => {}),
+      onUserLeave: params.callbacks?.onUserLeave || (() => { }),
       // 用户进退出
-      onUserLeaveOrJoin: params.callbacks?.onUserLeaveOrJoin || (() => {}),
+      onUserLeaveOrJoin: params.callbacks?.onUserLeaveOrJoin || (() => { }),
       // 群控错误相关回调
-      onGroupControlError: params.callbacks?.onGroupControlError || (() => {}),
+      onGroupControlError: params.callbacks?.onGroupControlError || (() => { }),
       // 云机信息回调
-      onEquipmentInfo: params.callbacks?.onEquipmentInfo || (() => {}),
+      onEquipmentInfo: params.callbacks?.onEquipmentInfo || (() => { }),
       // 发送用户错误
-      onSendUserError: params.callbacks?.onSendUserError || (() => {}),
+      onSendUserError: params.callbacks?.onSendUserError || (() => { }),
       // 执行adb命令后结果回调
-      onAdbOutput: params.callbacks?.onAdbOutput || (() => {}),
+      onAdbOutput: params.callbacks?.onAdbOutput || (() => { }),
       // 收到本端上行及下行的网络质量信息。
-      onNetworkQuality: params.callbacks?.onNetworkQuality || (() => {}),
+      onNetworkQuality: params.callbacks?.onNetworkQuality || (() => { }),
       // 视频注入结果
-      onInjectVideoResult: params.callbacks?.onInjectVideoResult || (() => {}),
+      onInjectVideoResult: params.callbacks?.onInjectVideoResult || (() => { }),
+      // 消息回调
+      onMessage: params.callbacks?.onMessage || (() => { }),
+      // 旋转变化回调
+      onRotationChanged: params.callbacks?.onRotationChanged || (() => { }),
+      // 远端视频尺寸变化回调
+      onRemoteVideoSizeChanged: params.callbacks?.onRemoteVideoSizeChanged || (() => { }),
+      // 首帧回调
+      onFirstFrame: params.callbacks?.onFirstFrame || (() => { }),
     };
     // 初始化回调
     if (
@@ -152,7 +158,7 @@ class ArmcloudEngine {
       params.deviceInfo.padCode &&
       params.deviceInfo.userId
     ) {
-      let uuid = localStorage.getItem("armcloud_uuid") || this.generateUUID();
+      const uuid = localStorage.getItem("armcloud_uuid") || this.generateUUID();
       localStorage.setItem("armcloud_uuid", uuid || "");
 
       const url = params?.baseUrl
@@ -168,49 +174,34 @@ class ArmcloudEngine {
         videoStream: this.rtcOptions.videoStream,
       };
       this.logTime.tokenResStart = new Date().getTime();
-      axios
-        .post(url, tokenParams, {
-          headers: {
-            "Content-Type": "application/json",
-            token: this.rtcOptions.token,
-          },
-          cancelToken: this.axiosSource.token, // 将取消令牌添加到请求配置中
-        })
-        .then((response) => {
-          // console.log("响应数据:", response.data);
-          if (response.data.code === 200) {
+      fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          token: this.rtcOptions.token,
+        },
+        body: JSON.stringify(tokenParams),
+        signal: this.abortController.signal, // 将取消令牌添加到请求配置中
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          if (data.code === 200) {
             this.logTime.tokenResEnd = new Date().getTime();
-            this.streamType = response.data.data.streamType;
+            this.streamType = data.data.streamType;
 
-            if (this.streamType == 1) {
-              // 火山rtc
-              this.rtcOptions.uuid = uuid;
-              this.rtcOptions.appId = response.data.data.appId;
-              this.rtcOptions.roomCode = response.data.data.roomCode;
-              this.rtcOptions.roomToken = response.data.data.roomToken;
-              // 创建引擎对象
-              this.rtcInstance = new HuoshanRTC(
-                params.viewId,
-                this.rtcOptions,
-                this.callbacks,
-                this.logTime
-              );
-            } else if (this.streamType == 2) {
-              this.rtcOptions.uuid = uuid;
-              // p2p webrtc
-              this.rtcOptions.roomToken = response.data.data.roomToken;
-              this.rtcOptions.signalServer = response.data.data.signalServer;
-              this.rtcOptions.stuns = response.data.data.stuns;
-              this.rtcOptions.turns = response.data.data.turns;
+            // Always use Volcengine RTC
+            this.rtcOptions.uuid = uuid;
+            this.rtcOptions.appId = data.data.appId;
+            this.rtcOptions.roomCode = data.data.roomCode;
+            this.rtcOptions.roomToken = data.data.roomToken;
 
-              // 创建引擎对象
-              this.rtcInstance = new WebRTC(
-                params.viewId,
-                this.rtcOptions,
-                this.callbacks,
-                this.logTime
-              );
-            }
+            // 创建引擎对象 — Volcengine RTC only
+            this.rtcInstance = new HuoshanRTC(
+              params.viewId,
+              this.rtcOptions,
+              this.callbacks,
+              this.logTime
+            );
             this.callbacks.onInit({
               code: COMMON_CODE.SUCCESS,
               msg: "初始化成功",
@@ -218,14 +209,14 @@ class ArmcloudEngine {
             });
           } else {
             this.callbacks.onInit({
-              code: response?.data?.code || COMMON_CODE.FAIL,
-              msg: response?.data?.msg,
+              code: data?.code || COMMON_CODE.FAIL,
+              msg: data?.msg,
               streamType: this.streamType,
             });
           }
         })
-        .catch((error) => {
-          if (axios.isCancel(error)) {
+        .catch((error: Error) => {
+          if (error.name === "AbortError") {
             return;
           }
           console.error("获取初始化配置失败:", error);
@@ -244,13 +235,10 @@ class ArmcloudEngine {
   }
 
   /** 生成uuid */
-  // eslint-disable-next-line class-methods-use-this
-  generateUUID() {
+  generateUUID(): string {
     // 生成UUID v4
     return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-      // eslint-disable-next-line no-bitwise
       const r = (Math.random() * 16) | 0;
-      // eslint-disable-next-line no-bitwise
       const v = c === "x" ? r : (r & 0x3) | 0x8;
       const uuid = v.toString(16);
       return uuid;
@@ -258,116 +246,109 @@ class ArmcloudEngine {
   }
 
   /** 浏览器是否支持webrTC */
-  isSupported() {
-    return this.rtcInstance?.isSupported();
+  async isSupported(): Promise<boolean | undefined> {
+    return await this.rtcInstance?.isSupported();
   }
 
   /** 销毁引擎 */
-  destroyEngine() {
+  destroyEngine(): void {
     if (this.rtcInstance) this.rtcInstance.destroyEngine();
   }
+
   /** 是否开启麦克风 */
-  setMicrophone(val: boolean) {
+  setMicrophone(val: boolean): void {
     if (this.rtcInstance) this.rtcInstance.setMicrophone(val);
   }
+
   /** 是否开启摄像头 */
-  setCamera(val: boolean) {
+  setCamera(val: boolean): void {
     if (this.rtcInstance) this.rtcInstance.setCamera(val);
   }
+
   /** 手动开启音视频流播放 */
-  startPlay() {
+  startPlay(): void {
     if (this.rtcInstance) this.rtcInstance.startPlay();
   }
 
-  setViewSize(width: number, height: number, rotateType: 0 | 1 = 0) {
+  setViewSize(width: number, height: number, rotateType: 0 | 1 = 0): void {
     if (this.rtcInstance)
       this.rtcInstance.setViewSize(width, height, rotateType);
   }
+
   /** 加入房间 */
-  start(isGroupControl = false, pads = []) {
+  start(isGroupControl = false, pads: string[] = []): void {
     if (this.rtcInstance) this.rtcInstance.start(isGroupControl, pads);
   }
+
   /** 群控加入房间 */
-  joinGroupRoom(pads = []) {
+  joinGroupRoom(pads: string[] = []): void {
     if (this.rtcInstance) this.rtcInstance.joinGroupRoom(pads);
   }
+
   /** 踢出群控房间 */
-  kickItOutRoom(pads = []) {
+  kickItOutRoom(pads: string[] = []): void {
     if (this.rtcInstance) this.rtcInstance.kickItOutRoom(pads);
   }
+
   /** 离开房间 */
-  async stop() {
-    this.axiosSource?.cancel();
-    this.axiosSource = null;
+  async stop(): Promise<void> {
+    this.abortController?.abort();
+    this.abortController = null;
     return this?.rtcInstance?.stop();
   }
 
-  /**
-   * 静音
-   */
-  muted() {
+  /** 静音 */
+  muted(): void {
     if (this.rtcInstance) this.rtcInstance.muted();
   }
 
-  /**
-   * 取消静音
-   */
-  unmuted() {
+  /** 取消静音 */
+  unmuted(): void {
     if (this.rtcInstance) this.rtcInstance.unmuted();
   }
 
   /** app卸载 */
-  appUnInstall(pkgNames: Array<string>) {
+  appUnInstall(pkgNames: Array<string>): void {
     if (this.rtcInstance) this.rtcInstance.appUnInstall(pkgNames);
   }
 
   /** 获取云机信息 */
-  getEquipmentInfo(type: "app" | "attr") {
+  getEquipmentInfo(type: "app" | "attr"): void {
     if (this.rtcInstance) this.rtcInstance.getEquipmentInfo(type);
   }
+
   /** 指定摄像头 */
-  setVideoDeviceId(val: string) {
+  setVideoDeviceId(val: string): void {
     if (this.rtcInstance) this.rtcInstance.setVideoDeviceId(val);
   }
+
   /** 指定麦克风 */
-  setAudioDeviceId(val: string) {
+  setAudioDeviceId(val: string): void {
     if (this.rtcInstance) this.rtcInstance.setAudioDeviceId(val);
   }
 
-  /**
-   * 将字符串发送到云手机的粘贴板中
-   * @param inputStr 剪切板内容
-   */
-  sendInputClipper(inputStr: string) {
+  /** 将字符串发送到云手机的粘贴板中 */
+  sendInputClipper(inputStr: string): void {
     if (this.rtcInstance) this.rtcInstance.sendInputClipper(inputStr);
   }
 
-  /**
-   * 将字符串 分别发到云机的剪切板中
-   * @param inputStr 剪切板内容
-   */
-  sendGroupInputClipper(pads: any, strs: any) {
+  /** 将字符串 分别发到云机的剪切板中 */
+  sendGroupInputClipper(pads: string[], strs: string[]): void {
     if (this.rtcInstance) this.rtcInstance.sendGroupInputClipper(pads, strs);
   }
 
-  /**
-   * 将字符串 分别发到云机的输入框中
-   * @param inputStr 剪切板内容
-   */
-  sendGroupInputString(pads: any, strs: any) {
+  /** 将字符串 分别发到云机的输入框中 */
+  sendGroupInputString(pads: string[], strs: string[]): void {
     if (this.rtcInstance) this.rtcInstance.sendGroupInputString(pads, strs);
   }
 
-  /**
-   * 当云手机处于输入状态时，将字符串直接发送到云手机，完成输入
-   * @param inputStr 剪切板内容
-   */
-  sendInputString(inputStr: string) {
+  /** 当云手机处于输入状态时，将字符串直接发送到云手机，完成输入 */
+  sendInputString(inputStr: string): void {
     if (this.rtcInstance) this.rtcInstance.sendInputString(inputStr);
   }
 
   /** 清晰度切换 */
-  setStreamConfig(config: CustomDefinition) {
+  setStreamConfig(config: CustomDefinition): void {
     if (this.rtcInstance) this.rtcInstance.setStreamConfig(config);
   }
 
@@ -376,9 +357,9 @@ class ArmcloudEngine {
    * 该方法仅暂停远端流的接收，并不影响远端流的采集和发送。
    * @param mediaType 1 只控制音频; 2 只控制视频; 3 同时控制音频和视频
    */
-  pauseAllSubscribedStream(mediaType: number = 3) {
+  pauseAllSubscribedStream(mediaType: number = 3): void {
     if (this.rtcInstance)
-      return this.rtcInstance.pauseAllSubscribedStream(mediaType);
+      this.rtcInstance.pauseAllSubscribedStream(mediaType);
   }
 
   /**
@@ -386,15 +367,13 @@ class ArmcloudEngine {
    * 该方法仅恢复远端流的接收，并不影响远端流的采集和发送。
    * @param mediaType 1 只控制音频; 2 只控制视频; 3 同时控制音频和视频
    */
-  resumeAllSubscribedStream(mediaType: number = 3) {
+  resumeAllSubscribedStream(mediaType: number = 3): void {
     if (this.rtcInstance)
-      return this.rtcInstance.resumeAllSubscribedStream(mediaType);
+      this.rtcInstance.resumeAllSubscribedStream(mediaType);
   }
 
-  /**
-   * 订阅房间内指定的通过摄像头/麦克风采集的媒体流。
-   */
-  subscribeStream(mediaType: number = 2) {
+  /** 订阅房间内指定的通过摄像头/麦克风采集的媒体流 */
+  subscribeStream(mediaType: number = 2): Promise<void> {
     if (!this.rtcInstance) {
       return Promise.reject(
         new Error(
@@ -405,11 +384,8 @@ class ArmcloudEngine {
     return this.rtcInstance.subscribeStream(mediaType);
   }
 
-  /**
-   * 取消订阅房间内指定的通过摄像头/麦克风采集的媒体流。
-   * 该方法对自动订阅和手动订阅模式均适用。
-   */
-  unsubscribeStream(mediaType: number = 2) {
+  /** 取消订阅房间内指定的通过摄像头/麦克风采集的媒体流 */
+  unsubscribeStream(mediaType: number = 2): Promise<void> {
     if (!this.rtcInstance) {
       return Promise.reject(
         new Error(
@@ -417,75 +393,73 @@ class ArmcloudEngine {
         )
       );
     }
-    return this.rtcInstance?.unsubscribeStream(mediaType);
+    return this.rtcInstance!.unsubscribeStream(mediaType);
   }
-  /** 截图-保存到本地 */
-  saveScreenShotToLocal() {
-    return new Promise((resolve, reject) => {
-      if (this.rtcInstance) {
-        try {
-          this.rtcInstance.saveScreenShotToLocal().then((res) => {
-            resolve(res);
-          });
-        } catch (error) {
-          reject(error);
-        }
-      }
-    });
+
+  async saveScreenShotToLocal(): Promise<ImageData | undefined> {
+    if (this.rtcInstance) {
+      return await this.rtcInstance.saveScreenShotToLocal();
+    }
+    return Promise.reject("RTC instance does not exist");
   }
 
   /** 截图-保存到云机 */
-  saveScreenShotToRemote() {
+  saveScreenShotToRemote(): void {
     if (this.rtcInstance) this.rtcInstance.saveScreenShotToRemote();
   }
+
   /** 重新设置大小 */
-  resizeScreenshot(width: number, height: number) {
+  resizeScreenshot(width: number, height: number): void {
     this.rtcInstance?.resizeScreenshot(width, height);
   }
+
   /** 显示封面图 */
-  showScreenShot() {
+  showScreenShot(): void {
     this.rtcInstance?.showScreenShot();
   }
+
   /** 隐藏封面图 */
-  hideScreenShot() {
+  hideScreenShot(): void {
     this.rtcInstance?.hideScreenShot();
   }
+
   /** 旋转video */
-  rotateContainerVideo(type: 0 | 1 = 0) {
+  rotateContainerVideo(type: 0 | 1 = 0): void {
     this.rtcInstance?.rotateContainerVideo(type);
   }
+
   /** 旋转截图 */
-  setScreenshotRotation(rotation: number = 0) {
+  setScreenshotRotation(rotation: number = 0): void {
     this.rtcInstance?.setScreenshotRotation(rotation);
   }
+
   /** 生成封面图 */
-  takeScreenshot(rotation: number = 0) {
+  takeScreenshot(rotation: number = 0): void {
     this.rtcInstance?.takeScreenshot(rotation);
   }
 
   /** 清空封面图 */
-  clearScreenShot() {
+  clearScreenShot(): void {
     this.rtcInstance?.clearScreenShot();
   }
-  /**
-   * 手动横竖屏
-   * 对标百度API
-   */
-  setPhoneRotation(type: number) {
+
+  /** 手动横竖屏 */
+  setPhoneRotation(type: number): void {
     if (this.rtcInstance) this.rtcInstance.setPhoneRotation(type);
   }
 
   /** 手动定位 */
-  setGPS(longitude: number, latitude: number) {
+  setGPS(longitude: number, latitude: number): void {
     if (this.rtcInstance) this.rtcInstance.setGPS(longitude, latitude);
   }
 
   /** 执行adb命令 */
-  executeAdbCommand(command: string) {
+  executeAdbCommand(command: string): void {
     if (this.rtcInstance) this.rtcInstance?.executeAdbCommand(command);
   }
+
   /** 云机/本地键盘切换(false-云机键盘，true-本地键盘) */
-  setKeyboardStyle(keyBoardType: "pad" | "local") {
+  setKeyboardStyle(keyBoardType: "pad" | "local"): void {
     if (this.rtcInstance) this.rtcInstance.setKeyboardStyle(keyBoardType);
   }
 
@@ -493,27 +467,27 @@ class ArmcloudEngine {
    * 设置无操作回收时间
    * @param second 秒 默认300s,最大7200s
    */
-  setAutoRecycleTime(second: number) {
+  setAutoRecycleTime(second: number): void {
     if (this.rtcInstance) this.rtcInstance.setAutoRecycleTime(second);
   }
 
   /** 获取无操作回收时间 */
-  getAutoRecycleTime() {
+  getAutoRecycleTime(): number | undefined {
     if (this.rtcInstance) return this.rtcInstance.getAutoRecycleTime();
   }
 
   /** 底部栏操作按键 */
-  sendCommand(command: string) {
+  sendCommand(command: string): void {
     if (this.rtcInstance) this.rtcInstance.sendCommand(command);
   }
 
   /** 音量增加按键事件 */
-  increaseVolume() {
+  increaseVolume(): void {
     if (this.rtcInstance) this.rtcInstance.increaseVolume();
   }
 
   /** 音量减少按键事件 */
-  decreaseVolume() {
+  decreaseVolume(): void {
     if (this.rtcInstance) this.rtcInstance.decreaseVolume();
   }
 
@@ -521,22 +495,21 @@ class ArmcloudEngine {
    * 是否接收粘贴板内容回调
    * @param flag true:接收 false:不接收
    */
-  saveCloudClipboard(flag: boolean) {
+  saveCloudClipboard(flag: boolean): void {
     if (this.rtcInstance) this.rtcInstance.saveCloudClipboard(flag);
   }
 
-  /**  注入视频到相机 */
   injectVideoStream(
     type: "startVideoInjection" | "stopVideoInjection",
-    options?: any
-  ) {
-    if (this.rtcInstance) this.rtcInstance.injectVideoStream(type, options);
+    options?: VideoInjectionOptions
+  ): void {
+    if (this.rtcInstance) {
+      this.rtcInstance.injectVideoStream(type, options ?? {});
+    }
   }
-  /**
-   * 摇一摇
-   * @param time
-   */
-  sendShake(time?: number) {
+
+  /** 摇一摇 */
+  sendShake(time?: number): void {
     if (this.rtcInstance) this.rtcInstance.sendShakeInfo(time ?? 1500);
   }
 }

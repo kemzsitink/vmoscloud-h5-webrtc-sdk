@@ -7,20 +7,20 @@
   "types": "dist/types/index.d.ts",
   "scripts": {
     "build": "rollup -c",
-    "dev": "rollup -c -w"
+    "dev": "rollup -c -w",
+    "lint": "eslint src/"
   },
   "dependencies": {
-    "@volcengine/rtc": "^4.61.2",
-    "axios": "^1.7.3",
-    "crypto-js": "^4.2.0",
-    "webrtc-adapter": "^9.0.1"
+    "@volcengine/rtc": "^4.61.2"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^25.0.0",
     "@rollup/plugin-node-resolve": "^15.0.0",
     "@rollup/plugin-typescript": "^11.1.6",
+    "eslint": "^9.0.0",
     "rollup": "^4.20.0",
     "tslib": "^2.6.3",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "typescript-eslint": "^8.0.0"
   }
 }

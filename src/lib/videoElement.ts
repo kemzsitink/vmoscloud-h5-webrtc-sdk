@@ -82,7 +82,9 @@ export class VideoElement {
     const domElement = document.getElementById(this.videoDomId);
     if (domElement) {
       const wrappedListener = (event: Event) => {
-        type !== "wheel" && event.preventDefault(); // 阻止默认行为
+        if (type !== "wheel") {
+          event.preventDefault(); // 阻止默认行为
+        }
         listener(event); // 执行传入的监听器函数
       };
       domElement.addEventListener(type, wrappedListener);

@@ -10,9 +10,7 @@ A professional WebRTC-based SDK for interacting with **ArmCloud Phone** and **Cl
 ## 🚀 Key Features
 
 - **🎮 Remote Control**: High-precision touch events, gestures, and keyboard mapping (Home, Back, Menu).
-- **📡 Dual WebRTC Stack**:
-  - **Huoshan RTC**: Optimized for ByteDance's Volcengine infrastructure.
-  - **Standard WebRTC**: Fallback/Custom implementation using WebSocket and PeerConnection.
+- **📡 Optimized WebRTC**: Fully integrated with ByteDance's **Volcengine (Huoshan RTC)** infrastructure for ultra-low latency and high stability.
 - **🌍 Virtual Sensors**:
   - **GPS Simulation**: Set custom longitude and latitude.
   - **Device Orientation**: Rotate the remote screen (Portrait/Landscape).
@@ -82,7 +80,7 @@ engine.saveScreenShotToLocal();
 
 - `src/lib/pkg.ts`: Core `ArmcloudEngine` class.
 - `src/lib/huoshanRtc.ts`: Volcengine RTC implementation.
-- `src/lib/webRtc.ts`: Standard WebRTC implementation.
+- `src/lib/huoshanGroupRtc.ts`: Group control logic using Volcengine RTC.
 - `src/lib/enums.ts`: Action types and key constants.
 - `src/lib/utils.ts`: Internal helper functions.
 
@@ -91,7 +89,7 @@ engine.saveScreenShotToLocal();
 ## 🔗 Resources
 
 - **Official Documentation**: [VMOS Cloud H5 Example](https://cloud.vmoscloud.com/vmoscloud/doc/en/client/h5/example.html#sample-code)
-- **Technology Stack**: WebRTC, TypeScript, Rollup, Axios, CryptoJS.
+- **Technology Stack**: WebRTC, TypeScript, Rollup, Axios, @volcengine/rtc.
 
 ---
 
