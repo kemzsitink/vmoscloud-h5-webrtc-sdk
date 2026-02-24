@@ -4,6 +4,7 @@ import huoshanGroupRtc from "./huoshanGroupRtc";
 import VERTC, {
   StreamIndex,
   MediaType,
+  AudioProfileType,
 } from "@volcengine/rtc";
 import Shake from "./shake";
 import { LOG_TYPE } from "./constant";
@@ -223,6 +224,9 @@ class HuoshanRTC {
       }
     }
     this.engine = VERTC.createEngine(this.options.appId);
+    if (this.enableMicrophone) {
+      this.engine.setAudioProfile(AudioProfileType.fluent);
+    }
 
     // const widthBase: number = 768
     // const heightBase: number = 1024
@@ -881,6 +885,14 @@ class HuoshanRTC {
           this.options.clientId,
           this.options.mediaType
         );
+
+        if (this.options.latencyTarget && this.engine) {
+          this.engine.setJitterBufferTarget(
+            this.options.clientId,
+            StreamIndex.STREAM_INDEX_MAIN,
+            this.options.latencyTarget
+          );
+        }
 
         if (!this.screenShotInstance) {
           this.screenShotInstance = new ScreenshotOverlay(

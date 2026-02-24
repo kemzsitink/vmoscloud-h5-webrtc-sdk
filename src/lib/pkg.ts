@@ -84,6 +84,7 @@ class ArmcloudEngine {
       saveCloudClipboard: params.deviceInfo.saveCloudClipboard ?? true, // 云机剪切板回调开关
       videoDeviceId: params.deviceInfo.videoDeviceId ?? "", // 摄像头ID
       audioDeviceId: params.deviceInfo.audioDeviceId ?? "", // 麦克风ID
+      latencyTarget: params.latencyTarget, // 延时目标
     };
 
     this.callbacks = {

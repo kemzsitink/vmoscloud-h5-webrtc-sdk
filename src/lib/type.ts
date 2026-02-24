@@ -105,6 +105,7 @@ export interface SDKInitParams {
     isLog?: boolean;
     isWsProxy?: string;
     manageToken?: string;
+    latencyTarget?: number;
 }
 
 /** RTC connection options passed to HuoshanRTC */
@@ -141,6 +142,7 @@ export interface RTCOptions {
     isFullScreen: number;
     rotateType?: number;
     saveCloudClipboard: boolean;
+    latencyTarget?: number;
 }
 
 /** Log time tracking */
