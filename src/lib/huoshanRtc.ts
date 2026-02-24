@@ -5,6 +5,7 @@ import VERTC, {
   StreamIndex,
   MediaType,
   AudioProfileType,
+  SimulcastStreamType,
 } from "@volcengine/rtc";
 import Shake from "./shake";
 import { LOG_TYPE } from "./constant";
@@ -28,6 +29,10 @@ class HuoshanRTC {
   private enableCamera: boolean = true;
   private screenShotInstance!: ScreenshotOverlay;
   private isFirstRotate: boolean = false;
+  private videoDomRect?: DOMRect;
+  private videoDomWidth: number = 0;
+  private videoDomHeight: number = 0;
+  private lastTimerResetTime: number = 0;
   private remoteResolution = {
     width: 0,
     height: 0,
@@ -203,8 +208,13 @@ class HuoshanRTC {
   /** 触发无操作回收回调函数 */
   triggerRecoveryTimeCallback() {
     if (this.options.disable || !this.options.autoRecoveryTime) return;
+
+    const now = Date.now();
+    // Throttle timer resets to once every 500ms to save CPU
+    if (now - this.lastTimerResetTime < 500) return;
+    this.lastTimerResetTime = now;
+
     if (this.autoRecoveryTimer) {
-      // console.log("清除计时器");
       clearTimeout(this.autoRecoveryTimer);
     }
     this.autoRecoveryTimer = setTimeout(() => {
@@ -224,6 +234,7 @@ class HuoshanRTC {
       }
     }
     this.engine = VERTC.createEngine(this.options.appId);
+    this.engine.setRemoteStreamRenderSync(false);
     if (this.enableMicrophone) {
       this.engine.setAudioProfile(AudioProfileType.fluent);
     }
@@ -387,12 +398,15 @@ class HuoshanRTC {
     notSendInGroups?: boolean
   ) {
     try {
-      // 重置无操作回收定时器
+      // 重置无操作回收定时器 (Throttled inside the method)
       this.triggerRecoveryTimeCallback();
 
-      if (!notSendInGroups) this.sendGroupRoomMessage(message);
+      // Optimize: Only check group control if it's explicitly enabled to avoid branching overhead
+      if (this.isGroupControl && !notSendInGroups) {
+        return await this.sendGroupRoomMessage(message);
+      }
 
-      return await this?.engine?.sendUserMessage(userId, message);
+      return await this.engine?.sendUserMessage(userId, message);
     } catch (error: unknown) {
       this.callbacks?.onSendUserError(error);
     }
@@ -458,6 +472,19 @@ class HuoshanRTC {
         if (videoDom) {
           videoDom.style.width = "0px";
           videoDom.style.height = "0px";
+
+          const updateDomCache = () => {
+            this.videoDomRect = videoDom.getBoundingClientRect();
+            this.videoDomWidth = videoDom.clientWidth;
+            this.videoDomHeight = videoDom.clientHeight;
+          };
+          updateDomCache();
+
+          // Update cache on resize
+          const resizeObserver = new ResizeObserver(() => {
+            updateDomCache();
+          });
+          resizeObserver.observe(videoDom);
 
           const isMobileFlag = isTouchDevice() || isMobile();
           let eventTypeStart = "touchstart";
@@ -534,8 +561,9 @@ class HuoshanRTC {
             }
 
             this.touchInfo = generateTouchCoord();
-            // 获取节点相对于视口的位置信息
-            const videoDomIdRect = videoDom.getBoundingClientRect();
+            // Get from cache to avoid layout thrashing
+            if (!this.videoDomRect) updateDomCache();
+            const videoDomIdRect = this.videoDomRect!;
             const distanceToTop = videoDomIdRect.top;
             const distanceToLeft = videoDomIdRect.left;
             // 初始化
@@ -547,13 +575,13 @@ class HuoshanRTC {
             this.touchConfig.pointCount = touchCount;
             // 手指触控节点宽高
             const bigSide =
-              videoDom.clientWidth > videoDom.clientHeight
-                ? videoDom.clientWidth
-                : videoDom.clientHeight;
+              this.videoDomWidth > this.videoDomHeight
+                ? this.videoDomWidth
+                : this.videoDomHeight;
             const smallSide =
-              videoDom.clientWidth > videoDom.clientHeight
-                ? videoDom.clientHeight
-                : videoDom.clientWidth;
+              this.videoDomWidth > this.videoDomHeight
+                ? this.videoDomHeight
+                : this.videoDomWidth;
 
             this.touchConfig.widthPixels =
               this.rotateType === 1 ? bigSide : smallSide;
@@ -589,7 +617,7 @@ class HuoshanRTC {
                 y = touch.clientY - distanceToTop;
 
                 if (
-                  this.rotateType == 1 &&
+                  this.rotateType === 1 &&
                   this.remoteResolution.height > this.remoteResolution.width
                 ) {
                   x = videoDomIdRect.bottom - touch.clientY;
@@ -630,8 +658,9 @@ class HuoshanRTC {
             if (!this.hasPushDown) {
               return;
             }
-            // 获取节点相对于视口的位置信息
-            const videoDomIdRect = videoDom.getBoundingClientRect();
+            // Get from cache to avoid layout thrashing
+            if (!this.videoDomRect) updateDomCache();
+            const videoDomIdRect = this.videoDomRect!;
             const distanceToTop = videoDomIdRect.top;
             const distanceToLeft = videoDomIdRect.left;
             // 计算触摸手指数量
@@ -886,11 +915,18 @@ class HuoshanRTC {
           this.options.mediaType
         );
 
-        if (this.options.latencyTarget && this.engine) {
+        if (this.engine) {
+          // Force high quality stream for cloud gaming
+          this.engine.setRemoteSimulcastStreamType(
+            this.options.clientId,
+            SimulcastStreamType.VIDEO_STREAM_HIGH
+          );
+
           this.engine.setJitterBufferTarget(
             this.options.clientId,
             StreamIndex.STREAM_INDEX_MAIN,
-            this.options.latencyTarget
+            this.options.latencyTarget ?? 0,
+            false // Non-progressive adjustment for extreme low latency
           );
         }
 
