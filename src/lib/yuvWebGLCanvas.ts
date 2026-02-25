@@ -104,6 +104,7 @@ export default class YUVWebGLCanvas {
 
   /**
    * Nhận dữ liệu YUV thô (VideoFrame) và vẽ siêu tốc bằng GPU Zero-copy
+   * Kèm cơ chế recycleMemory để tránh tràn VRAM
    */
   public drawFrame(frame: VideoFrame) {
     if (!this.gl || !this.program || !this.texture) return;
@@ -112,9 +113,16 @@ export default class YUVWebGLCanvas {
     // Đặt viewport khớp với kích thước thật của canvas
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
 
-    // Render texture (Zero-copy YUV to RGB by GPU)
+    // [Mobile Tier 2] Render texture (Zero-copy YUV to RGB by GPU)
+    // Trên iOS/Safari, texImage2D với VideoFrame là con đường tối ưu nhất
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, frame);
+    
+    try {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, frame);
+    } catch (e) {
+      // Fallback cho một số trình duyệt cũ yêu cầu format LUMINANCE khi xử lý YUV
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, gl.LUMINANCE, gl.UNSIGNED_BYTE, frame as any);
+    }
 
     // Liên kết Position Buffer
     const positionLocation = gl.getAttribLocation(this.program, "a_position");
@@ -130,6 +138,12 @@ export default class YUVWebGLCanvas {
 
     // Vẽ 2 hình tam giác tạo thành 1 hình chữ nhật
     gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    // [recycleMemory] Giải phóng liên kết texture ngay lập tức để GPU dọn dẹp vùng nhớ tạm
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    
+    // Gợi ý cho trình duyệt rằng chúng ta đã hoàn thành tác vụ GPU này
+    gl.flush(); 
   }
 
   public destroy() {

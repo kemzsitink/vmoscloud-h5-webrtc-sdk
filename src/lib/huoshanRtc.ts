@@ -107,8 +107,9 @@ class HuoshanRTC {
   private videoDeviceId!: string;
   private audioDeviceId!: string;
   private shakeSimulator: Shake;
-  public parentDomElement: HTMLElement | null = null;
+  private parentDomElement: HTMLElement | null = null;
   private webcodecsCanvas: HTMLCanvasElement | null = null;
+  private webcodecsCtx2d: CanvasRenderingContext2D | null = null;
   private webglRenderer: YUVWebGLCanvas | null = null;
   private videoTrackGenerator: any | null = null;
   private videoTrackWriter: WritableStreamDefaultWriter<VideoFrame> | null = null;
@@ -116,6 +117,7 @@ class HuoshanRTC {
   private currentResolutionLevel: number = 0; // 0: Max, higher is lower resolution
   private lastAdjustmentTime: number = 0;
   private p2pTunnel: P2pTunnel;
+  private warmUpFrameCount: number = 0;
 
   constructor(viewId: string, params: RTCOptions, callbacks: SDKCallbacks, logTime: LogTime) {
     // console.log("HuoshanRTC initialized", params);
@@ -536,68 +538,7 @@ class HuoshanRTC {
           videoDom.style.height = "0px";
 
           if (useWebCodecs) {
-            const hasGenerator = typeof (window as any).MediaStreamTrackGenerator !== "undefined";
-            
-            if (hasGenerator) {
-              console.log("[WebCodecs] Using MediaStreamTrackGenerator for zero-copy native rendering.");
-              this.videoTrackGenerator = new (window as any).MediaStreamTrackGenerator({ kind: 'video' });
-              this.videoTrackWriter = this.videoTrackGenerator.writable.getWriter();
-            } else {
-              console.log("[WebCodecs] Falling back to YUVWebGLCanvas (MediaStreamTrackGenerator not supported).");
-              this.webcodecsCanvas = document.createElement("canvas");
-              this.webcodecsCanvas.style.width = "100%";
-              this.webcodecsCanvas.style.height = "100%";
-              this.webcodecsCanvas.style.position = "absolute";
-              this.webcodecsCanvas.style.top = "0";
-              this.webcodecsCanvas.style.left = "0";
-              this.webcodecsCanvas.style.objectFit = "fill";
-              this.webcodecsCanvas.style.zIndex = "5"; 
-              this.webcodecsCanvas.style.pointerEvents = "none";
-              this.webglRenderer = new YUVWebGLCanvas(this.webcodecsCanvas);
-              videoDom.appendChild(this.webcodecsCanvas);
-            }
-
-            setWebCodecsFrameCallback((frame) => {
-              if (!this.isFirstWebcodecsFrame) {
-                this.isFirstWebcodecsFrame = true;
-                console.log("[WebCodecs] 视频首帧渲染回调", frame.displayWidth, frame.displayHeight);
-                
-                const nativeVideo = videoDom.querySelector("video");
-                if (nativeVideo) {
-                  if (this.videoTrackGenerator) {
-                    // Route decoded frames back into the native video element via MediaStream
-                    nativeVideo.srcObject = new MediaStream([this.videoTrackGenerator]);
-                    nativeVideo.play().catch(() => {});
-                    nativeVideo.style.opacity = "1";
-                  } else {
-                    // Hide native video when using Canvas fallback
-                    nativeVideo.style.opacity = "0";
-                  }
-                }
-
-                if (!this.isFirstRotate) {
-                  this.initRotateScreen(frame.displayWidth, frame.displayHeight).then(() => {
-                    this.callbacks.onRenderedFirstFrame();
-                  });
-                } else {
-                  this.callbacks.onRenderedFirstFrame();
-                }
-              }
-
-              if (this.videoTrackWriter) {
-                this.videoTrackWriter.write(frame);
-                // VideoFrame is automatically closed by MediaStreamTrackGenerator
-              } else if (this.webcodecsCanvas && this.webglRenderer) {
-                if (this.webcodecsCanvas.width !== frame.displayWidth || this.webcodecsCanvas.height !== frame.displayHeight) {
-                  this.webcodecsCanvas.width = frame.displayWidth;
-                  this.webcodecsCanvas.height = frame.displayHeight;
-                }
-                this.webglRenderer.drawFrame(frame);
-                frame.close();
-              } else {
-                frame.close();
-              }
-            });
+            this.initDrawer(videoDom);
           }
 
           const updateDomCache = () => {
@@ -1077,6 +1018,7 @@ class HuoshanRTC {
           this.webcodecsCanvas.parentNode.removeChild(this.webcodecsCanvas);
         }
         this.webcodecsCanvas = null;
+        this.webcodecsCtx2d = null;
         this.isFirstWebcodecsFrame = false;
       }
 
@@ -1679,6 +1621,120 @@ class HuoshanRTC {
     if (targetConfig) {
       console.log(`[jumpFrameProc] Điều phối mạng: Level ${this.currentResolutionLevel} (Res ID:${targetConfig.definitionId}, FPS ID:${targetConfig.framerateId}, Bitrate ID:${targetConfig.bitrateId})`);
       this.setStreamConfig(targetConfig);
+    }
+  }
+
+  private initDrawer(videoDom: HTMLElement) {
+    const hasGenerator = typeof (window as any).MediaStreamTrackGenerator !== "undefined";
+    const hasWebGL = (() => {
+      try {
+        const canvas = document.createElement('canvas');
+        return !!(window.WebGLRenderingContext && (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')));
+      } catch (e) { return false; }
+    })();
+
+    if (hasGenerator) {
+      // Con đường 1 (Android hiện đại): Dùng WebCodecs + MediaStreamTrackGenerator
+      console.log("[Mobile Tier] Tier 1: VideoDraw (Native Engine).");
+      this.videoTrackGenerator = new (window as any).MediaStreamTrackGenerator({ kind: 'video' });
+      this.videoTrackWriter = this.videoTrackGenerator.writable.getWriter();
+    } else if (hasWebGL) {
+      // Con đường 2 (iOS & trình duyệt cũ): Dùng WebGL Canvas
+      console.log("[Mobile Tier] Tier 2: WebGLDraw (GPU Accelerated).");
+      this.webcodecsCanvas = document.createElement("canvas");
+      this.setupCanvasStyle(this.webcodecsCanvas);
+      this.webglRenderer = new YUVWebGLCanvas(this.webcodecsCanvas);
+      videoDom.appendChild(this.webcodecsCanvas);
+    } else {
+      // Con đường 3 (Fallback cuối cùng): Vẽ bằng 2D Context Canvas
+      console.log("[Mobile Tier] Tier 3: CanvasDraw (Fallback).");
+      this.webcodecsCanvas = document.createElement("canvas");
+      this.setupCanvasStyle(this.webcodecsCanvas);
+      this.webcodecsCtx2d = this.webcodecsCanvas.getContext("2d", { alpha: false });
+      videoDom.appendChild(this.webcodecsCanvas);
+    }
+
+    setWebCodecsFrameCallback((frame) => {
+      // Cơ chế "Warm-up" CPU/GPU: Giải mã 10 khung hình đầu tiên để kích xung nhịp (Clock speed)
+      if (this.warmUpFrameCount < 10) {
+        this.warmUpFrameCount++;
+        if (this.webglRenderer) {
+          this.webglRenderer.drawFrame(frame); // Vẽ nhử lên GPU
+        } else if (this.webcodecsCtx2d) {
+          this.webcodecsCtx2d.drawImage(frame, 0, 0, 1, 1); // Vẽ nhử 1x1 pixel
+        }
+        frame.close();
+        return;
+      }
+
+      if (!this.isFirstWebcodecsFrame) {
+        this.isFirstWebcodecsFrame = true;
+        this.handleFirstFrame(frame, videoDom);
+      }
+
+      if (this.videoTrackWriter) {
+        // Con đường 1: VideoDraw (Native) - Writer tự động đóng frame sau khi ghi
+        this.videoTrackWriter.write(frame);
+      } else if (this.webglRenderer) {
+        // Con đường 2: WebGLDraw (GPU Accelerated)
+        try {
+          if (this.webcodecsCanvas!.width !== frame.displayWidth || this.webcodecsCanvas!.height !== frame.displayHeight) {
+            this.webcodecsCanvas!.width = frame.displayWidth;
+            this.webcodecsCanvas!.height = frame.displayHeight;
+          }
+          this.webglRenderer.drawFrame(frame);
+        } finally {
+          // [Zero-Latency Frame Cleanup] Cưỡng bức thu hồi VRAM ngay lập tức
+          frame.close();
+        }
+      } else if (this.webcodecsCanvas && this.webcodecsCtx2d) {
+        // Con đường 3: CanvasDraw (Fallback)
+        try {
+          if (this.webcodecsCanvas.width !== frame.displayWidth || this.webcodecsCanvas.height !== frame.displayHeight) {
+            this.webcodecsCanvas.width = frame.displayWidth;
+            this.webcodecsCanvas.height = frame.displayHeight;
+          }
+          this.webcodecsCtx2d.drawImage(frame, 0, 0);
+        } finally {
+          // [Zero-Latency Frame Cleanup] Giải phóng RAM Mobile ngay sau khi vẽ
+          frame.close();
+        }
+      } else {
+        frame.close();
+      }
+    });
+  }
+
+  private setupCanvasStyle(canvas: HTMLCanvasElement) {
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
+    canvas.style.position = "absolute";
+    canvas.style.top = "0";
+    canvas.style.left = "0";
+    canvas.style.objectFit = "fill";
+    canvas.style.zIndex = "5";
+    canvas.style.pointerEvents = "none";
+  }
+
+  private handleFirstFrame(frame: VideoFrame, videoDom: HTMLElement) {
+    console.log("[WebCodecs] First frame decoded.");
+    const nativeVideo = videoDom.querySelector("video");
+    if (nativeVideo) {
+      if (this.videoTrackGenerator) {
+        nativeVideo.srcObject = new MediaStream([this.videoTrackGenerator]);
+        nativeVideo.play().catch(() => {});
+        nativeVideo.style.opacity = "1";
+      } else {
+        nativeVideo.style.opacity = "0";
+      }
+    }
+
+    if (!this.isFirstRotate) {
+      this.initRotateScreen(frame.displayWidth, frame.displayHeight).then(() => {
+        this.callbacks.onRenderedFirstFrame();
+      });
+    } else {
+      this.callbacks.onRenderedFirstFrame();
     }
   }
 
