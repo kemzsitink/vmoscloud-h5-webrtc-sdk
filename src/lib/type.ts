@@ -76,6 +76,7 @@ export interface DeviceInfo {
     saveCloudClipboard?: boolean;
     videoDeviceId?: string;
     audioDeviceId?: string;
+    useWebCodecs?: boolean;
 }
 
 /** SDK initialization parameters from user */
@@ -106,6 +107,7 @@ export interface SDKInitParams {
     isWsProxy?: string;
     manageToken?: string;
     latencyTarget?: number;
+    useWebCodecs?: boolean;
 }
 
 /** RTC connection options passed to HuoshanRTC */
@@ -143,6 +145,7 @@ export interface RTCOptions {
     rotateType?: number;
     saveCloudClipboard: boolean;
     latencyTarget?: number;
+    useWebCodecs?: boolean;
 }
 
 /** Log time tracking */
@@ -213,6 +216,7 @@ export interface ReportEntry {
 /** Interface for RTC instance consumed by textInput */
 export interface RTCInstance {
     initDomId: string;
+    parentDomElement: HTMLElement | null;
     inputElement: HTMLInputElement | undefined;
     options: RTCOptions;
     remoteUserId: string;

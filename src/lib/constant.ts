@@ -14,14 +14,14 @@ export const LOG_TYPE = {
   FAIL: 0,
 } as const;
 
-export enum MEDIA_CONTROL_TYPE {
+export const MEDIA_CONTROL_TYPE = {
   // 音频
-  AUDIO_ONLY = 1,
+  AUDIO_ONLY: 1,
   // 视频
-  VIDEO_ONLY = 2,
+  VIDEO_ONLY: 2,
   // 音视频
-  AUDIO_VIDEO = 3,
-}
+  AUDIO_VIDEO: 3,
+} as const;
 
 export const MEDIA_VOICE_TYPE = {
   // 音频
@@ -56,34 +56,6 @@ export const PROGRESS_INFO = {
   OWN_JOIN_ROOM: {
     code: 200,
     msg: "收到加入房间信息",
-  },
-  RECEIVE_OFFER: {
-    code: 201,
-    msg: "设置offer信息成功",
-  },
-  RECEIVE_OFFER_ERR: {
-    code: 202,
-    msg: "设置offer信息失败",
-  },
-  SEND_ANSWER: {
-    code: 203,
-    msg: "发送answer信息",
-  },
-  SEND_ANSWER_ERR: {
-    code: 204,
-    msg: "发送answer信息失败",
-  },
-  RECEIVE_ICE: {
-    code: 205,
-    msg: "添加ICE信息成功",
-  },
-  RECEIVE_ICE_ERR: {
-    code: 206,
-    msg: "添加ICE信息失败",
-  },
-  SEND_ICE: {
-    code: 207,
-    msg: "发送ICE信息",
   },
   RTC_CONNECTING: {
     code: 300,
@@ -123,10 +95,14 @@ export const PROGRESS_INFO = {
   },
   VIDEO_UI_NUMBER: {
     code: 309,
-    msg: "VIDEO加载成功当未收到云机的UI信息",
+    msg: "VIDEO加载成功但未收到云机的UI信息",
   },
   VIDEO_FIRST_FRAME: {
     code: 310,
     msg: "VIDEO第一帧渲染成功",
+  },
+  RECOVERY_TIMEOUT: {
+    code: 400,
+    msg: "无操作超时，已自动回收",
   },
 } as const;

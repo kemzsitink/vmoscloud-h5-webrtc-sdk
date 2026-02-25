@@ -1,6 +1,7 @@
 import HuoshanRTC from "./huoshanRtc";
 import { COMMON_CODE } from "./constant";
 import type { CustomDefinition, SDKInitParams, RTCOptions, LogTime, SDKCallbacks } from "./type";
+import { enableWebCodecsPipeline } from "./webcodecsMonkeyPatch";
 
 interface VideoInjectionOptions {
   fileUrl?: string;
@@ -44,6 +45,10 @@ class ArmcloudEngine {
   };
 
   constructor(params: SDKInitParams) {
+    if (params.deviceInfo?.useWebCodecs) {
+      enableWebCodecsPipeline();
+    }
+    
     this.abortController = new AbortController(); // 创建一个取消令牌
     // 初始化入参
     this.rtcOptions = {
@@ -64,7 +69,7 @@ class ArmcloudEngine {
       enableMicrophone: params.enableMicrophone ?? true,
       enableCamera: params.enableCamera ?? true,
       baseUrl: params.baseUrl,
-      isWsProxy: params.isWsProxy ? JSON.parse(params.isWsProxy) : false,
+      isWsProxy: String(params.isWsProxy) === "true",
       manageToken: params.manageToken ?? "",
       masterIdPrefix: params.masterIdPrefix ?? "",
       uuid: "",
@@ -84,7 +89,8 @@ class ArmcloudEngine {
       saveCloudClipboard: params.deviceInfo.saveCloudClipboard ?? true, // 云机剪切板回调开关
       videoDeviceId: params.deviceInfo.videoDeviceId ?? "", // 摄像头ID
       audioDeviceId: params.deviceInfo.audioDeviceId ?? "", // 麦克风ID
-      latencyTarget: params.latencyTarget ?? 0, // 延时目标 (0ms for absolute minimum latency)
+      latencyTarget: params.latencyTarget ?? 15, // 延时目标 (15ms for better quality on 4G)
+      useWebCodecs: params.deviceInfo.useWebCodecs ?? false, // 启用 WebCodecs
     };
 
     this.callbacks = {
@@ -159,8 +165,13 @@ class ArmcloudEngine {
       params.deviceInfo.padCode &&
       params.deviceInfo.userId
     ) {
-      const uuid = localStorage.getItem("armcloud_uuid") || this.generateUUID();
-      localStorage.setItem("armcloud_uuid", uuid || "");
+      let uuid = "";
+      try {
+        uuid = localStorage.getItem("armcloud_uuid") || this.generateUUID();
+        localStorage.setItem("armcloud_uuid", uuid);
+      } catch (e) {
+        uuid = this.generateUUID();
+      }
 
       const url = params?.baseUrl
         ? `${params.baseUrl}/rtc/open/room/applyToken`
@@ -237,6 +248,9 @@ class ArmcloudEngine {
 
   /** 生成uuid */
   generateUUID(): string {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
     // 生成UUID v4
     return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
       const r = (Math.random() * 16) | 0;
@@ -253,7 +267,10 @@ class ArmcloudEngine {
 
   /** 销毁引擎 */
   destroyEngine(): void {
-    if (this.rtcInstance) this.rtcInstance.destroyEngine();
+    if (this.rtcInstance) {
+      this.rtcInstance.destroyEngine();
+      this.rtcInstance = null;
+    }
   }
 
   /** 是否开启麦克风 */
@@ -295,7 +312,9 @@ class ArmcloudEngine {
   async stop(): Promise<void> {
     this.abortController?.abort();
     this.abortController = null;
-    return this?.rtcInstance?.stop();
+    if (!this.rtcInstance) return Promise.resolve();
+    await this.rtcInstance.stop();
+    this.rtcInstance = null;
   }
 
   /** 静音 */
@@ -401,7 +420,7 @@ class ArmcloudEngine {
     if (this.rtcInstance) {
       return await this.rtcInstance.saveScreenShotToLocal();
     }
-    return Promise.reject("RTC instance does not exist");
+    return Promise.reject(new Error("RTC instance does not exist"));
   }
 
   /** 截图-保存到云机 */

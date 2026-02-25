@@ -23,13 +23,23 @@ interface IceErrorInfo {
 }
 
 // 普通错误
-export const handleError = (error: Error | null | undefined): ErrorInfo | Record<string, never> => {
+export const handleError = (error: unknown): ErrorInfo | Record<string, never> => {
   if (!error) return {};
 
+  if (typeof error === 'string') {
+    return {
+      name: "StringError",
+      message: error,
+      stack: "",
+      time: new Date().getTime(),
+    };
+  }
+
+  const err = error as Error;
   return {
-    name: error?.name || "",
-    message: error?.message || "",
-    stack: error?.stack || "",
+    name: err.name || "",
+    message: err.message || "",
+    stack: err.stack || "",
     time: new Date().getTime(),
   };
 };

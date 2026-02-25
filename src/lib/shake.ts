@@ -7,6 +7,9 @@ export default class ShakeSimulator {
   }
 
   public startShakeSimulation(duration: number = 1800, callback: (data: { x: number; y: number; z: number }) => void): void {
+    // Clear any existing simulation to prevent multiple intervals running concurrently (race condition)
+    this.stopShakeSimulation();
+    
     this.isRunning = true;
     const startTime = Date.now();
 
@@ -27,12 +30,12 @@ export default class ShakeSimulator {
       if (Date.now() - startTime > duration) {
         this.stopShakeSimulation();
       }
-    }, 10);
+    }, 33); // 33ms is ~30fps, much better for performance than 100fps (10ms)
   }
 
   private randomAcceleration(): number {
     // 随机生成一个模拟的加速度值
-    return Math.random() * 15 - 5; // 产生 -10 到 15 之间的随机值
+    return Math.random() * 25 - 10; // 产生 -10 到 15 之间的随机值
   }
 
   private stopShakeSimulation(): void {

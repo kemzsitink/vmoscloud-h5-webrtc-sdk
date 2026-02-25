@@ -15,6 +15,8 @@ import { generateTouchCoord } from "./mixins";
 import { isMobile, isTouchDevice } from "./utils";
 import { addInputElement } from "./textInput";
 import ScreenshotOverlay from "./screenshotOverlay";
+import { setWebCodecsFrameCallback } from "./webcodecsMonkeyPatch";
+import YUVWebGLCanvas from "./yuvWebGLCanvas";
 
 class HuoshanRTC {
   // 初始外部H5传入DomId
@@ -27,8 +29,11 @@ class HuoshanRTC {
   private hasPushDown: boolean = false;
   private enableMicrophone: boolean = true;
   private enableCamera: boolean = true;
-  private screenShotInstance!: ScreenshotOverlay;
+  private screenShotInstance: ScreenshotOverlay | null = null;
   private isFirstRotate: boolean = false;
+  private resizeObserver?: ResizeObserver;
+  private lastMoveTime: number = 0;
+  private videoDomElement: HTMLDivElement | null = null;
   private videoDomRect?: DOMRect;
   private videoDomWidth: number = 0;
   private videoDomHeight: number = 0;
@@ -37,6 +42,8 @@ class HuoshanRTC {
     width: 0,
     height: 0,
   };
+  private fpsCameraX: number = 0;
+  private fpsCameraY: number = 0;
 
   // 触摸信息
   private touchConfig: TouchConfig = {
@@ -97,6 +104,11 @@ class HuoshanRTC {
   private rotateType!: number;
   private videoDeviceId!: string;
   private audioDeviceId!: string;
+  private shakeSimulator: Shake;
+  public parentDomElement: HTMLElement | null = null;
+  private webcodecsCanvas: HTMLCanvasElement | null = null;
+  private webglRenderer: YUVWebGLCanvas | null = null;
+  private isFirstWebcodecsFrame: boolean = false;
 
   constructor(viewId: string, params: RTCOptions, callbacks: SDKCallbacks, logTime: LogTime) {
     // console.log("HuoshanRTC initialized", params);
@@ -110,9 +122,11 @@ class HuoshanRTC {
     this.enableCamera = params.enableCamera;
     this.videoDeviceId = params.videoDeviceId;
     this.audioDeviceId = params.audioDeviceId;
+    this.shakeSimulator = new Shake();
 
     // 获取外部容器div元素
     const h5Dom = document.getElementById(this.initDomId);
+    this.parentDomElement = h5Dom;
     // 获取 h5Dom 节点宽高
     // console.log('h5Dom节点宽高', h5Dom?.clientWidth, h5Dom?.clientHeight)
     this.initDomWidth = h5Dom?.clientWidth ?? 0;
@@ -122,6 +136,7 @@ class HuoshanRTC {
     const divId = `${masterIdPrefix}_${padCode}_armcloudVideo`;
     newDiv.setAttribute("id", divId);
     this.videoDomId = divId;
+    this.videoDomElement = newDiv;
     // 将div元素添加到外部容器中
     h5Dom?.appendChild(newDiv);
 
@@ -233,6 +248,21 @@ class HuoshanRTC {
         addInputElement(this as unknown as import('./type').RTCInstance, true);
       }
     }
+
+    // Global SDK Tuning for Zero Latency
+    VERTC.setParameter("SEND_MESSAGE_SYNC", true); // Dispatch messages immediately
+    VERTC.setParameter("PRE_ICE", true); // Fast ICE connection setup
+    VERTC.setParameter("H264_HW_ENCODER", true); // Force GPU hardware acceleration
+    VERTC.setParameter("SIGNAL_CROP_JOINROOM", true); // Optimize join signaling
+    VERTC.setParameter("SIGNAL_COMPRESSION", true); // Compress signaling packets
+    VERTC.setParameter("SKIP_SEI_FILTER", true); // Reduce SEI processing latency
+    
+    // WebCodecs requires Insertable Streams (Encoded Transform).
+    // Ensure Volcengine SDK does not disable it internally.
+    if (this.options.useWebCodecs) {
+      VERTC.setParameter("DISABLE_ENCODED_TRANSFORM", false);
+    }
+
     this.engine = VERTC.createEngine(this.options.appId);
     this.engine.setRemoteStreamRenderSync(false);
     if (this.enableMicrophone) {
@@ -277,22 +307,6 @@ class HuoshanRTC {
     this.engine.on(VERTC.events.onAutoplayFailed, (e) => {
       this.callbacks.onAutoplayFailed(e);
     });
-
-    /** 用户订阅的远端音/视频流统计信息以及网络状况，统计周期为 2s */
-    this.engine.on(VERTC.events.onRemoteStreamStats, (e) => {
-      this.callbacks.onRunInformation(e);
-    });
-
-    /** 加入房间后，会以每2秒一次的频率，收到本端上行及下行的网络质量信息。 */
-    this.engine.on(
-      VERTC.events.onNetworkQuality,
-      (uplinkNetworkQuality: number, downlinkNetworkQuality: number) => {
-        this.callbacks.onNetworkQuality(
-          uplinkNetworkQuality,
-          downlinkNetworkQuality
-        );
-      }
-    );
   }
 
   // 创建群控实例
@@ -422,7 +436,7 @@ class HuoshanRTC {
   }
   /** 群控加入房间 */
   public joinGroupRoom(pads: string[]): void {
-    const arr = pads?.filter((v: string) => v !== this.remoteUserId);
+    const arr = (pads || [])?.filter((v: string) => v !== this.remoteUserId);
     if (!arr.length || !this.isGroupControl) return;
 
     if (!this.groupRtc && this.isGroupControl) {
@@ -459,7 +473,7 @@ class HuoshanRTC {
         }
       )
       .then(async (res: unknown) => {
-        const arr = pads?.filter((v: string) => v !== this.remoteUserId);
+        const arr = (pads || [])?.filter((v: string) => v !== this.remoteUserId);
         if (isGroupControl && arr.length) this.createGroupEngine(arr);
         this.setLogTime("wsJoinRoom");
         this.addReportInfo({
@@ -467,11 +481,50 @@ class HuoshanRTC {
           res,
         });
         // 加入房间成功
-        const { disableContextMenu, clientId: userId } = this.options;
-        const videoDom = document.getElementById(this.videoDomId);
+        const { disableContextMenu, clientId: userId, useWebCodecs } = this.options;
+        const videoDom = this.videoDomElement;
         if (videoDom) {
           videoDom.style.width = "0px";
           videoDom.style.height = "0px";
+
+          if (useWebCodecs) {
+            this.webcodecsCanvas = document.createElement("canvas");
+            this.webcodecsCanvas.style.width = "100%";
+            this.webcodecsCanvas.style.height = "100%";
+            this.webcodecsCanvas.style.position = "absolute";
+            this.webcodecsCanvas.style.top = "0";
+            this.webcodecsCanvas.style.left = "0";
+            this.webcodecsCanvas.style.objectFit = "fill";
+            this.webcodecsCanvas.style.zIndex = "5"; 
+            this.webcodecsCanvas.style.pointerEvents = "none";
+            this.webglRenderer = new YUVWebGLCanvas(this.webcodecsCanvas);
+            videoDom.appendChild(this.webcodecsCanvas);
+
+            setWebCodecsFrameCallback((frame) => {
+              if (!this.isFirstWebcodecsFrame) {
+                this.isFirstWebcodecsFrame = true;
+                console.log("[WebCodecs] 视频首帧渲染回调", frame.displayWidth, frame.displayHeight);
+                if (!this.isFirstRotate) {
+                  this.initRotateScreen(frame.displayWidth, frame.displayHeight).then(() => {
+                    this.callbacks.onRenderedFirstFrame();
+                  });
+                } else {
+                  this.callbacks.onRenderedFirstFrame();
+                }
+                const nativeVideo = videoDom.querySelector("video");
+                if (nativeVideo) nativeVideo.style.opacity = "0";
+              }
+
+              if (this.webcodecsCanvas && this.webglRenderer) {
+                if (this.webcodecsCanvas.width !== frame.displayWidth || this.webcodecsCanvas.height !== frame.displayHeight) {
+                  this.webcodecsCanvas.width = frame.displayWidth;
+                  this.webcodecsCanvas.height = frame.displayHeight;
+                }
+                this.webglRenderer.drawFrame(frame);
+              }
+              frame.close();
+            });
+          }
 
           const updateDomCache = () => {
             this.videoDomRect = videoDom.getBoundingClientRect();
@@ -481,10 +534,10 @@ class HuoshanRTC {
           updateDomCache();
 
           // Update cache on resize
-          const resizeObserver = new ResizeObserver(() => {
+          this.resizeObserver = new ResizeObserver(() => {
             updateDomCache();
           });
-          resizeObserver.observe(videoDom);
+          this.resizeObserver.observe(videoDom);
 
           const isMobileFlag = isTouchDevice() || isMobile();
           let eventTypeStart = "touchstart";
@@ -630,6 +683,13 @@ class HuoshanRTC {
                   y = videoDomIdRect.right - touch.clientX;
                 }
               }
+              
+              // Xử lý FPS Camera: Lưu toạ độ ban đầu khi nhấn chuột
+              if (!isMobileFlag && document.pointerLockElement === videoDom) {
+                this.fpsCameraX = x ?? 0;
+                this.fpsCameraY = y ?? 0;
+              }
+
               this.touchConfig.coords.push({
                 ...this.touchInfo,
                 orientation: 0.01 * Math.random(),
@@ -658,6 +718,8 @@ class HuoshanRTC {
             if (!this.hasPushDown) {
               return;
             }
+
+            // Xử lý tại chỗ: Không throttle để tối ưu FPS, gửi ngay dữ liệu thô
             // Get from cache to avoid layout thrashing
             if (!this.videoDomRect) updateDomCache();
             const videoDomIdRect = this.videoDomRect!;
@@ -677,7 +739,31 @@ class HuoshanRTC {
               };
               let x = 'offsetX' in touch ? touch.offsetX : undefined;
               let y = 'offsetX' in touch ? touch.offsetY : undefined;
-              if (x === undefined) {
+              
+              // Xử lý tại chỗ: Tọa độ tính từ movementX/Y (Không qua bộ lọc của trình duyệt, tối ưu FPS game)
+              if (!isMobileFlag && document.pointerLockElement === videoDom) {
+                const mouseEvent = touch as MouseEvent;
+                // Accumulate raw movement bypassing OS acceleration
+                let movementX = mouseEvent.movementX || 0;
+                let movementY = mouseEvent.movementY || 0;
+                
+                // Adjust for rotation if needed
+                if (this.rotateType === 1 && this.remoteResolution.height > this.remoteResolution.width) {
+                   const temp = movementX;
+                   movementX = -movementY;
+                   movementY = temp;
+                } else if (this.rotateType === 0 && this.remoteResolution.width > this.remoteResolution.height) {
+                   const temp = movementX;
+                   movementX = movementY;
+                   movementY = -temp;
+                }
+                
+                this.fpsCameraX += movementX;
+                this.fpsCameraY += movementY;
+                
+                x = this.fpsCameraX;
+                y = this.fpsCameraY;
+              } else if (x === undefined) {
                 x = touch.clientX - distanceToLeft;
                 y = touch.clientY - distanceToTop;
 
@@ -695,6 +781,7 @@ class HuoshanRTC {
                   y = videoDomIdRect.right - touch.clientX;
                 }
               }
+
               coords.push({
                 ...this.touchInfo,
                 orientation: 0.01 * Math.random(),
@@ -781,10 +868,8 @@ class HuoshanRTC {
     });
   }
   setViewSize(width: number, height: number, rotateType: 0 | 1 = 0) {
-    const h5Dom = document.getElementById(this.initDomId);
-    const videoDom = document.getElementById(
-      this.videoDomId
-    ) as HTMLDivElement | null;
+    const h5Dom = this.parentDomElement;
+    const videoDom = this.videoDomElement;
 
     if (h5Dom && videoDom) {
       const setDimensions = (
@@ -806,7 +891,7 @@ class HuoshanRTC {
       setDimensions(videoDom, width, height);
     }
   }
-  async updateUiH5() {
+  async updateUiH5(retryCount = 0) {
     try {
       const userId = this.options.clientId;
       const contentObj = {
@@ -827,7 +912,11 @@ class HuoshanRTC {
       this.addReportInfo({
         describe: "发送updateUiH5失败",
       });
-      this.updateUiH5();
+      if (retryCount < 3) {
+        setTimeout(() => {
+          this.updateUiH5(retryCount + 1);
+        }, 1000);
+      }
     }
   }
   /** 远端可见用户加入房间 */
@@ -880,8 +969,23 @@ class HuoshanRTC {
 
       this.groupRtc?.close();
       this.screenShotInstance?.destroy();
+      this.resizeObserver?.disconnect();
+      this.resizeObserver = undefined;
 
-      const videoDomElement = document.getElementById(this.videoDomId);
+      if (this.options.useWebCodecs) {
+        setWebCodecsFrameCallback(null);
+        if (this.webglRenderer) {
+          this.webglRenderer.destroy();
+          this.webglRenderer = null;
+        }
+        if (this.webcodecsCanvas && this.webcodecsCanvas.parentNode) {
+          this.webcodecsCanvas.parentNode.removeChild(this.webcodecsCanvas);
+        }
+        this.webcodecsCanvas = null;
+        this.isFirstWebcodecsFrame = false;
+      }
+
+      const videoDomElement = this.videoDomElement;
       if (videoDomElement && videoDomElement.parentNode) {
         videoDomElement.parentNode.removeChild(videoDomElement);
       }
@@ -889,7 +993,7 @@ class HuoshanRTC {
       this.sendEventReport("error");
       this.groupEngine = undefined;
       this.groupRtc = undefined;
-      this.screenShotInstance = null!;
+      this.screenShotInstance = null;
     } catch (error) {
       return Promise.reject(error);
     }
@@ -902,7 +1006,7 @@ class HuoshanRTC {
       mediaType: MediaType;
     }) => {
       if (e.userId === this.options.clientId) {
-        const player = document.querySelector(`#${this.videoDomId}`) as HTMLDivElement;
+        const player = this.videoDomElement as HTMLDivElement;
 
         this.addReportInfo({
           describe: "订阅和播放房间内的音视频流",
@@ -925,7 +1029,7 @@ class HuoshanRTC {
           this.engine.setJitterBufferTarget(
             this.options.clientId,
             StreamIndex.STREAM_INDEX_MAIN,
-            this.options.latencyTarget ?? 0,
+            this.options.latencyTarget ?? 15,
             false // Non-progressive adjustment for extreme low latency
           );
         }
@@ -946,8 +1050,7 @@ class HuoshanRTC {
    */
   sendShakeInfo(time: number): void {
     const userId = this.options.clientId;
-    const shake = new Shake();
-    shake.startShakeSimulation(time, (content) => {
+    this.shakeSimulator.startShakeSimulation(time, (content) => {
       const getOptions = (sensorType: string): string => {
         return JSON.stringify({
           coords: [],
@@ -1261,13 +1364,17 @@ class HuoshanRTC {
     return this.engine?.resumeAllSubscribedStream(mediaType);
   }
   async setRemoteVideoRotation(rotation: number) {
-    const player = document.querySelector(`#${this.videoDomId}`) as HTMLElement;
+    const player = this.videoDomElement as HTMLElement;
     await this.engine?.setRemoteVideoPlayer(StreamIndex.STREAM_INDEX_MAIN, {
       userId: this.options.clientId,
       renderDom: player,
       renderMode: 2,
       rotation,
     });
+    
+    if (this.options.useWebCodecs && this.webcodecsCanvas) {
+      this.webcodecsCanvas.style.transform = `rotate(${rotation}deg)`;
+    }
   }
   /**
    * 订阅房间内指定的通过摄像头/麦克风采集的媒体流。
@@ -1277,7 +1384,7 @@ class HuoshanRTC {
   }
   /** 旋转VIDEO 容器 1 横屏 0 竖屏 */
   rotateContainerVideo(type: 0 | 1 = 0) {
-    const player = document.querySelector(`#${this.videoDomId} div`) as HTMLElement | null;
+    const player = this.videoDomElement?.querySelector("div") as HTMLElement | null;
     if (player) {
       let translateY,
         rotate = 0;
@@ -1402,7 +1509,7 @@ class HuoshanRTC {
   async rotateScreen(type: number) {
     // console.log(1111, `type=${type}`)
     // 获取父元素（调用方）的原始宽度和高度，这里要重新获取，因为外层的div可能宽高发生变化
-    const h5Dom = document.getElementById(this.initDomId);
+    const h5Dom = this.parentDomElement;
     if (!h5Dom) return;
     this.rotateType = type;
 
@@ -1442,7 +1549,7 @@ class HuoshanRTC {
     // 旋转角度
     let videoWrapperRotate = 0;
 
-    const videoDom = document.getElementById(this.videoDomId) as HTMLDivElement;
+    const videoDom = this.videoDomElement as HTMLDivElement;
 
     if (type === 1) {
       const w = videoIsLandscape

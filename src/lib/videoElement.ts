@@ -2,7 +2,8 @@ export class VideoElement {
   private videoDomId: string; // 视频 DOM 元素的 ID
   private remoteVideoId: string; // 远程视频元素的 ID
   private containerId: string; // 容器元素的 ID
-  private remoteVideo: HTMLVideoElement; // 远程视频元素
+  private remoteVideo: HTMLVideoElement | null; // 远程视频元素
+  private rootElement: HTMLDivElement | null = null; // 根容器
   private eventListeners: Array<{
     type: string;
     listener: EventListener;
@@ -34,7 +35,7 @@ export class VideoElement {
     return this.containerId;
   }
 
-  public getRemoteVideo(): HTMLVideoElement {
+  public getRemoteVideo(): HTMLVideoElement | null {
     // 获取远程视频元素
     return this.remoteVideo;
   }
@@ -42,6 +43,7 @@ export class VideoElement {
   public createElements(): HTMLElement {
     // 创建包含视频的 DOM 元素结构
     const newDiv = this.createDivElement(this.videoDomId); // 创建主 div
+    this.rootElement = newDiv;
     const newDiv2 = this.createDiv("100%", "100%", "relative", "hidden"); // 创建相对定位的 div
     const newDiv3 = this.createDiv(
       "100%",
@@ -52,7 +54,9 @@ export class VideoElement {
     ); // 创建绝对定位的 div
 
     // 将远程视频添加到新创建的 div 中
-    newDiv3.appendChild(this.remoteVideo);
+    if (this.remoteVideo) {
+      newDiv3.appendChild(this.remoteVideo);
+    }
     newDiv2.appendChild(newDiv3);
     newDiv.appendChild(newDiv2);
 
@@ -67,6 +71,7 @@ export class VideoElement {
     video.setAttribute("webkit-playsinline", ""); // WebKit 浏览器支持
     video.setAttribute("x5-playsinline", ""); // X5 浏览器支持
     video.setAttribute("x5-video-player-type", "h5"); // X5 视频播放器类型
+    video.autoplay = true; // 开启自动播放，防止黑屏或卡顿
 
     // 设置视频属性
     video.controls = false; // 禁用控制条
@@ -79,7 +84,7 @@ export class VideoElement {
   }
   // 允许绑定事件到 videoDomId 对应的元素，并阻止事件冒泡
   public bindDomEvent(type: string, listener: EventListener): void {
-    const domElement = document.getElementById(this.videoDomId);
+    const domElement = this.rootElement;
     if (domElement) {
       const wrappedListener = (event: Event) => {
         if (type !== "wheel") {
@@ -116,7 +121,7 @@ export class VideoElement {
   private createDiv(
     width: string,
     height: string,
-    position: string,
+    position: "relative" | "absolute",
     overflow: string,
     id?: string
   ): HTMLDivElement {
@@ -140,14 +145,22 @@ export class VideoElement {
     // 1. 移除所有事件监听器
     this.removeAllEvents();
 
-    // 2. 从 DOM 中删除 videoDomId 对应的元素
-    const videoDomElement = document.getElementById(this.videoDomId);
+    // 2. 释放 WebRTC 流 (防止内存泄漏)
+    if (this.remoteVideo) {
+      this.remoteVideo.srcObject = null;
+      this.remoteVideo.removeAttribute("src");
+      this.remoteVideo.load();
+    }
+
+    // 3. 从 DOM 中删除 videoDomId 对应的元素
+    const videoDomElement = this.rootElement;
     if (videoDomElement && videoDomElement.parentNode) {
       videoDomElement.parentNode.removeChild(videoDomElement);
     }
 
-    // 3. 释放类的属性
-    this.remoteVideo = null!;
+    // 4. 释放类的属性
+    this.remoteVideo = null;
+    this.rootElement = null;
     this.eventListeners = [];
   }
 }
