@@ -17,6 +17,8 @@ import { addInputElement } from "./textInput";
 import ScreenshotOverlay from "./screenshotOverlay";
 import { setWebCodecsFrameCallback } from "./webcodecsMonkeyPatch";
 import YUVWebGLCanvas from "./yuvWebGLCanvas";
+import { Pact } from "./pact";
+import P2pTunnel from "./p2pTunnel";
 
 class HuoshanRTC {
   // 初始外部H5传入DomId
@@ -108,7 +110,12 @@ class HuoshanRTC {
   public parentDomElement: HTMLElement | null = null;
   private webcodecsCanvas: HTMLCanvasElement | null = null;
   private webglRenderer: YUVWebGLCanvas | null = null;
+  private videoTrackGenerator: any | null = null;
+  private videoTrackWriter: WritableStreamDefaultWriter<VideoFrame> | null = null;
   private isFirstWebcodecsFrame: boolean = false;
+  private currentResolutionLevel: number = 0; // 0: Max, higher is lower resolution
+  private lastAdjustmentTime: number = 0;
+  private p2pTunnel: P2pTunnel;
 
   constructor(viewId: string, params: RTCOptions, callbacks: SDKCallbacks, logTime: LogTime) {
     // console.log("HuoshanRTC initialized", params);
@@ -123,6 +130,12 @@ class HuoshanRTC {
     this.videoDeviceId = params.videoDeviceId;
     this.audioDeviceId = params.audioDeviceId;
     this.shakeSimulator = new Shake();
+    this.p2pTunnel = new P2pTunnel();
+
+    // Đăng ký bộ não điều phối băng thông động (jumpFrameProc)
+    (window as any).__jumpFrameProc = (status: 'STRESS' | 'IDLE') => {
+      this.jumpFrameProc(status);
+    };
 
     // 获取外部容器div元素
     const h5Dom = document.getElementById(this.initDomId);
@@ -307,6 +320,32 @@ class HuoshanRTC {
     this.engine.on(VERTC.events.onAutoplayFailed, (e) => {
       this.callbacks.onAutoplayFailed(e);
     });
+
+    /** 
+     * Cơ chế cưỡng bức khung I-Frame (PliCount Injection)
+     * Theo dõi thống kê luồng để phát hiện mất gói tin và ép Server tạo I-Frame ngay lập tức
+     */
+    this.engine.on(VERTC.events.onRemoteStreamStats, (stats) => {
+      const videoStats = (stats as any)[this.options.clientId]?.videoStats;
+      if (videoStats && videoStats.packetsLost > 0) {
+        // Nếu phát hiện có mất gói tin (packetsLost > 0)
+        console.warn(`[PliCount Injection] Packets Lost detected (${videoStats.packetsLost}). Forcing I-Frame request...`);
+        this.pushIframeReq();
+      }
+      
+      // Vẫn bắn callback ra ngoài cho user nếu cần
+      this.callbacks.onRunInformation(stats);
+    });
+  }
+
+  /** Ép server tạo ngay một khung I-Frame mới qua DataChannel */
+  private pushIframeReq() {
+    const userId = this.options.clientId;
+    const message = JSON.stringify({
+      touchType: "eventSdk",
+      content: JSON.stringify({ type: "requestIFrame" }),
+    });
+    this.sendUserMessage(userId, message);
   }
 
   // 创建群控实例
@@ -375,8 +414,11 @@ class HuoshanRTC {
     if (this.engine) this.engine.play(this.options.clientId);
   }
   /** 群控房间信息 */
-  async sendGroupRoomMessage(message: string) {
-    return await this?.groupRtc?.sendRoomMessage(message);
+  sendGroupRoomMessage(message: string): Pact<unknown> {
+    return new Pact((resolve) => {
+      const res = this.groupRtc?.sendRoomMessage(message);
+      resolve(res);
+    });
   }
   getMsgTemplate(touchType: string, content: object) {
     return JSON.stringify({
@@ -406,24 +448,30 @@ class HuoshanRTC {
   }
 
   /** 发送消息 */
-  async sendUserMessage(
+  sendUserMessage(
     userId: string,
     message: string,
     notSendInGroups?: boolean
-  ) {
-    try {
-      // 重置无操作回收定时器 (Throttled inside the method)
-      this.triggerRecoveryTimeCallback();
+  ): Pact<unknown> {
+    return new Pact((resolve, reject) => {
+      try {
+        // 重置无操作回收定时器 (Throttled inside the method)
+        this.triggerRecoveryTimeCallback();
 
-      // Optimize: Only check group control if it's explicitly enabled to avoid branching overhead
-      if (this.isGroupControl && !notSendInGroups) {
-        return await this.sendGroupRoomMessage(message);
+        // Optimize: Only check group control if it's explicitly enabled to avoid branching overhead
+        if (this.isGroupControl && !notSendInGroups) {
+          const res = this.sendGroupRoomMessage(message);
+          resolve(res);
+          return;
+        }
+
+        const res = this.engine?.sendUserMessage(userId, message);
+        resolve(res);
+      } catch (error: unknown) {
+        this.callbacks?.onSendUserError(error);
+        reject(error);
       }
-
-      return await this.engine?.sendUserMessage(userId, message);
-    } catch (error: unknown) {
-      this.callbacks?.onSendUserError(error);
-    }
+    });
   }
   /** 群控退出房间 */
   public kickItOutRoom(pads: string[]): void {
@@ -488,22 +536,45 @@ class HuoshanRTC {
           videoDom.style.height = "0px";
 
           if (useWebCodecs) {
-            this.webcodecsCanvas = document.createElement("canvas");
-            this.webcodecsCanvas.style.width = "100%";
-            this.webcodecsCanvas.style.height = "100%";
-            this.webcodecsCanvas.style.position = "absolute";
-            this.webcodecsCanvas.style.top = "0";
-            this.webcodecsCanvas.style.left = "0";
-            this.webcodecsCanvas.style.objectFit = "fill";
-            this.webcodecsCanvas.style.zIndex = "5"; 
-            this.webcodecsCanvas.style.pointerEvents = "none";
-            this.webglRenderer = new YUVWebGLCanvas(this.webcodecsCanvas);
-            videoDom.appendChild(this.webcodecsCanvas);
+            const hasGenerator = typeof (window as any).MediaStreamTrackGenerator !== "undefined";
+            
+            if (hasGenerator) {
+              console.log("[WebCodecs] Using MediaStreamTrackGenerator for zero-copy native rendering.");
+              this.videoTrackGenerator = new (window as any).MediaStreamTrackGenerator({ kind: 'video' });
+              this.videoTrackWriter = this.videoTrackGenerator.writable.getWriter();
+            } else {
+              console.log("[WebCodecs] Falling back to YUVWebGLCanvas (MediaStreamTrackGenerator not supported).");
+              this.webcodecsCanvas = document.createElement("canvas");
+              this.webcodecsCanvas.style.width = "100%";
+              this.webcodecsCanvas.style.height = "100%";
+              this.webcodecsCanvas.style.position = "absolute";
+              this.webcodecsCanvas.style.top = "0";
+              this.webcodecsCanvas.style.left = "0";
+              this.webcodecsCanvas.style.objectFit = "fill";
+              this.webcodecsCanvas.style.zIndex = "5"; 
+              this.webcodecsCanvas.style.pointerEvents = "none";
+              this.webglRenderer = new YUVWebGLCanvas(this.webcodecsCanvas);
+              videoDom.appendChild(this.webcodecsCanvas);
+            }
 
             setWebCodecsFrameCallback((frame) => {
               if (!this.isFirstWebcodecsFrame) {
                 this.isFirstWebcodecsFrame = true;
                 console.log("[WebCodecs] 视频首帧渲染回调", frame.displayWidth, frame.displayHeight);
+                
+                const nativeVideo = videoDom.querySelector("video");
+                if (nativeVideo) {
+                  if (this.videoTrackGenerator) {
+                    // Route decoded frames back into the native video element via MediaStream
+                    nativeVideo.srcObject = new MediaStream([this.videoTrackGenerator]);
+                    nativeVideo.play().catch(() => {});
+                    nativeVideo.style.opacity = "1";
+                  } else {
+                    // Hide native video when using Canvas fallback
+                    nativeVideo.style.opacity = "0";
+                  }
+                }
+
                 if (!this.isFirstRotate) {
                   this.initRotateScreen(frame.displayWidth, frame.displayHeight).then(() => {
                     this.callbacks.onRenderedFirstFrame();
@@ -511,18 +582,21 @@ class HuoshanRTC {
                 } else {
                   this.callbacks.onRenderedFirstFrame();
                 }
-                const nativeVideo = videoDom.querySelector("video");
-                if (nativeVideo) nativeVideo.style.opacity = "0";
               }
 
-              if (this.webcodecsCanvas && this.webglRenderer) {
+              if (this.videoTrackWriter) {
+                this.videoTrackWriter.write(frame);
+                // VideoFrame is automatically closed by MediaStreamTrackGenerator
+              } else if (this.webcodecsCanvas && this.webglRenderer) {
                 if (this.webcodecsCanvas.width !== frame.displayWidth || this.webcodecsCanvas.height !== frame.displayHeight) {
                   this.webcodecsCanvas.width = frame.displayWidth;
                   this.webcodecsCanvas.height = frame.displayHeight;
                 }
                 this.webglRenderer.drawFrame(frame);
+                frame.close();
+              } else {
+                frame.close();
               }
-              frame.close();
             });
           }
 
@@ -847,8 +921,21 @@ class HuoshanRTC {
          * 5 连接断开后重连成功,
          * 6 处于 CONNECTION_STATE_DISCONNECTED 状态超过 10 秒，且期间重连未成功。SDK将继续尝试重连
          */
-        this.engine?.on(VERTC.events.onConnectionStateChanged, (e: unknown) => {
+        this.engine?.on(VERTC.events.onConnectionStateChanged, (e: any) => {
           this.callbacks.onConnectionStateChanged(e);
+          
+          // Trạng thái 3: 首次连接成功 (First connection success)
+          if (e === 3) {
+            // Lấy PeerConnection ẩn của Volcengine SDK để kiểm tra P2P (Monkey-patch access)
+            const pc = (this.engine as any)._getPeerConnection?.();
+            if (pc) {
+              this.p2pTunnel.detectP2PCapability(pc).then((isP2P) => {
+                if (isP2P) {
+                  this.p2pTunnel.optimizeForDirectPath(pc);
+                }
+              });
+            }
+          }
         });
       })
       .catch((error: Error & { code?: number }) => {
@@ -974,6 +1061,14 @@ class HuoshanRTC {
 
       if (this.options.useWebCodecs) {
         setWebCodecsFrameCallback(null);
+        if (this.videoTrackWriter) {
+          this.videoTrackWriter.releaseLock();
+          this.videoTrackWriter = null;
+        }
+        if (this.videoTrackGenerator) {
+          this.videoTrackGenerator.stop();
+          this.videoTrackGenerator = null;
+        }
         if (this.webglRenderer) {
           this.webglRenderer.destroy();
           this.webglRenderer = null;
@@ -1372,8 +1467,15 @@ class HuoshanRTC {
       rotation,
     });
     
-    if (this.options.useWebCodecs && this.webcodecsCanvas) {
-      this.webcodecsCanvas.style.transform = `rotate(${rotation}deg)`;
+    if (this.options.useWebCodecs) {
+      if (this.webcodecsCanvas) {
+        this.webcodecsCanvas.style.transform = `rotate(${rotation}deg)`;
+      }
+      // Apply rotation to the native video as well if it's acting as our sink
+      const nativeVideo = this.videoDomElement?.querySelector("video") as HTMLElement;
+      if (nativeVideo && this.videoTrackGenerator) {
+        nativeVideo.style.transform = `rotate(${rotation}deg)`;
+      }
     }
   }
   /**
@@ -1502,6 +1604,84 @@ class HuoshanRTC {
 
     await this.rotateScreen(targetRotateType);
   }
+  /**
+   * Native Browser Congestion Control Override
+   * Chủ động gửi mã điều khiển (bitrate_mode) nhị phân 8-bit lên Server
+   * @param mode Mã điều khiển 8-bit (0-255)
+   */
+  public changeBitrateModel(mode: number): Pact<unknown> {
+    return new Pact((resolve, reject) => {
+      try {
+        const userId = this.options.clientId;
+        const buffer = new Uint8Array([mode & 0xFF]).buffer; // Chế 8-bit nhị phân
+        
+        const res = this.engine?.sendUserBinaryMessage(userId, buffer);
+        console.log(`[Bitrate Override] Đã gửi mã điều khiển: 0x${mode.toString(16).toUpperCase()}`);
+        resolve(res);
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  /**
+   * Thuật toán jumpFrameProc - Xử lý bùng nổ độ trễ (Latency Burst)
+   * Đây là "bộ não" điều phối băng thông động.
+   */
+  private jumpFrameProc(status: 'STRESS' | 'IDLE') {
+    const now = Date.now();
+    // Khống chế tần suất điều chỉnh (tối thiểu 2 giây một lần để tránh dao động quá nhanh)
+    if (now - this.lastAdjustmentTime < 2000) return;
+
+    if (status === 'STRESS') {
+      // Giai đoạn Hạ (Step Down): Mạng nghẽn
+      if (this.currentResolutionLevel < 3) { // Giả sử có tối đa 4 mức (0, 1, 2, 3)
+        this.currentResolutionLevel++;
+        console.warn(`[jumpFrameProc] Mạng nghẽn! Hạ xuống Level ${this.currentResolutionLevel}`);
+        this.applyDynamicQuality();
+        
+        // Ghi đè trình duyệt: Ép Server dùng model Bitrate thấp (Ví dụ mã 0x05)
+        this.changeBitrateModel(0x05); 
+        
+        this.lastAdjustmentTime = now;
+      }
+    } else if (status === 'IDLE') {
+      // Giai đoạn Nâng (Step Up): Mạng nhàn rỗi
+      if (this.currentResolutionLevel > 0) {
+        this.currentResolutionLevel--;
+        console.log(`[jumpFrameProc] Mạng ổn định. Nâng lên Level ${this.currentResolutionLevel}`);
+        this.applyDynamicQuality();
+        
+        // Khôi phục model Bitrate tiêu chuẩn (Ví dụ mã 0x01)
+        this.changeBitrateModel(0x01);
+        
+        this.lastAdjustmentTime = now;
+      }
+    }
+  }
+
+  private applyDynamicQuality() {
+    /**
+     * Bản đồ chất lượng thích ứng (Enterprise Mapping)
+     * Level 0: 720p (ID 15), 60fps (ID 4), 4Mbps (ID 7)
+     * Level 1: 540p (ID 12), 30fps (ID 3), 3Mbps (ID 5)
+     * Level 2: 360p (ID 10), 20fps (ID 1), 1Mbps (ID 1)
+     * Level 3: 216p (ID 8),  15fps (ID 8), 400kbps (ID 14)
+     */
+    const qualityLevels: Record<number, CustomDefinition> = {
+      0: { definitionId: 15, framerateId: 4, bitrateId: 7 },
+      1: { definitionId: 12, framerateId: 3, bitrateId: 5 },
+      2: { definitionId: 10, framerateId: 1, bitrateId: 1 },
+      3: { definitionId: 8,  framerateId: 8, bitrateId: 14 },
+    };
+
+    const targetConfig = qualityLevels[this.currentResolutionLevel];
+    if (targetConfig) {
+      console.log(`[jumpFrameProc] Điều phối mạng: Level ${this.currentResolutionLevel} (Res ID:${targetConfig.definitionId}, FPS ID:${targetConfig.framerateId}, Bitrate ID:${targetConfig.bitrateId})`);
+      this.setStreamConfig(targetConfig);
+    }
+  }
+
   /**
    * 旋转屏幕
    * @param type 横竖屏：0竖屏，1横屏

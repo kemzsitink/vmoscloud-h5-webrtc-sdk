@@ -222,5 +222,5 @@ export interface RTCInstance {
     remoteUserId: string;
     roomMessage: RoomMessage;
     masterIdPrefix?: string;
-    sendUserMessage: (userId: string, message: string, notSendInGroups?: boolean) => Promise<unknown>;
+    sendUserMessage: (userId: string, message: string, notSendInGroups?: boolean) => any;
 }
