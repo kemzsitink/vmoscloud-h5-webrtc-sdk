@@ -3,11 +3,11 @@ export class VideoElement {
   private remoteVideoId: string; // 远程视频元素的 ID
   private containerId: string; // 容器元素的 ID
   private remoteVideo: HTMLVideoElement; // 远程视频元素
-  private eventListeners: Array<{
+  private eventListeners: {
     type: string;
     listener: EventListener;
     element: HTMLElement;
-  }> = []; // 存储事件类型和对应的监听器
+  }[] = []; // 存储事件类型和对应的监听器
 
   constructor(private masterIdPrefix: string, private remoteUserId: string) {
     // 初始化 ID

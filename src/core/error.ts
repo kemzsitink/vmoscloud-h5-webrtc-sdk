@@ -14,11 +14,11 @@ interface IceErrorInput {
 }
 
 interface IceErrorInfo {
-  errorCode?: number;
-  errorText?: string;
-  url?: string;
-  address?: string;
-  port?: number;
+  errorCode?: number | undefined;
+  errorText?: string | undefined;
+  url?: string | undefined;
+  address?: string | undefined;
+  port?: number | undefined;
   time: number;
 }
 

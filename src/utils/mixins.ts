@@ -1,4 +1,4 @@
-import type { TouchInfo } from "./types/webrtcType"
+import type { TouchInfo } from "../core/webrtcType"
 export const generateTouchCoord = (): TouchInfo => {
   const params = {
     pressure: 0.5 + 0.3 * Math.random(),

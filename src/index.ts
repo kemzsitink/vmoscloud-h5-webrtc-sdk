@@ -1,5 +1,5 @@
-import ArmcloudEngine from "./lib/pkg";
-import { KEYTYPE } from "./lib/enums";
+import ArmcloudEngine from "./engine/engine";
+import { KEYTYPE } from "./core/enums";
 
 export { ArmcloudEngine, KEYTYPE };
 export default ArmcloudEngine;

@@ -1,12 +1,12 @@
 export default class ShakeSimulator {
   private isRunning: boolean;
-  private intervalId?: ReturnType<typeof setInterval>;
+  private intervalId?: ReturnType<typeof setInterval> | undefined;
 
   constructor() {
     this.isRunning = false;
   }
 
-  public startShakeSimulation(duration: number = 1800, callback: (data: { x: number; y: number; z: number }) => void): void {
+  public startShakeSimulation(duration = 1800, callback: (data: { x: number; y: number; z: number }) => void): void {
     this.isRunning = true;
     const startTime = Date.now();
 

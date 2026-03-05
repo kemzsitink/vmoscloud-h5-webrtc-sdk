@@ -7,7 +7,7 @@ export interface CloudCoreConfig {
     expirationTime?: number;
     selfAdaption?: string | number;
     mediaType?: string | number;
-    rotateType?: number;
+    rotateType?: number | undefined;
     definition?: string | number;
     useLocalKeyboard?: boolean;
     allowCopyRemoteToLocal?: boolean;
@@ -70,7 +70,7 @@ export interface DeviceInfo {
     autoRecoveryTime?: number;
     isFullScreen?: number;
     mediaType?: number;
-    rotateType?: number;
+    rotateType?: number | undefined;
     keyboard?: string;
     disableContextMenu?: boolean;
     saveCloudClipboard?: boolean;
@@ -90,7 +90,7 @@ export interface SDKInitParams {
     videoDeviceId?: string;
     audioDeviceId?: string;
     mediaType?: number;
-    rotateType?: number;
+    rotateType?: number | undefined;
     disable?: boolean;
     autoRecoveryTime?: number;
     disableContextMenu?: boolean;
@@ -140,7 +140,7 @@ export interface RTCOptions {
     manageToken: string;
     videoStream: VideoStreamConfig;
     isFullScreen: number;
-    rotateType?: number;
+    rotateType?: number | undefined;
     saveCloudClipboard: boolean;
     latencyTarget?: number;
 }

@@ -1,0 +1,31 @@
+{
+  "name": "@volcengine/rtc",
+  "version": "4.68.1",
+  "dependencies": {
+    "eventemitter3": "^4.0.7"
+  },
+  "main": "index.min.js",
+  "module": "index.esm.min.js",
+  "types": "index.d.ts",
+  "license": "BSD-3-Clause",
+  "files": [
+    "index.min.js",
+    "index.esm.min.js",
+    "index.d.ts",
+    "index.esm.nopolyfill.min.js",
+    "extension-ainr/index.d.ts",
+    "extension-ainr/index.js",
+    "extension-ainr/index.umd.js",
+    "extension-beauty/index.d.ts",
+    "extension-beauty/index.js",
+    "extension-beauty/index.umd.js"
+  ],
+  "author": "VolcEngineRTC",
+  "description": "Volcano Engine WebRTC SDK",
+  "keywords": [
+    "Volcano Engine",
+    "WebRTC",
+    "Real Time Communication"
+  ],
+  "module.nopolyfill": "index.esm.nopolyfill.min.js"
+}

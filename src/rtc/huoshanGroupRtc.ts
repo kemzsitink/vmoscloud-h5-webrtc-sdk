@@ -1,5 +1,5 @@
-import VERTC, { type IRTCEngine } from '@volcengine/rtc'
-import type { RTCOptions, SDKCallbacks } from './type'
+import VERTC, { type IRTCEngine } from '../vendor/volcengine-rtc'
+import type { RTCOptions, SDKCallbacks } from '../core/types'
 
 interface GroupEngineOptions {
     roomCode: string
@@ -16,11 +16,11 @@ interface UserInfo {
 class huoshanGroupRtc {
     private engine: IRTCEngine | null = null
     private params: RTCOptions
-    private pads: Array<string> = []
+    private pads: string[] = []
     private callbacks: SDKCallbacks
     private abortControllers: AbortController[] = []
 
-    constructor(params: RTCOptions, pads: Array<string>, callbacks: SDKCallbacks) {
+    constructor(params: RTCOptions, pads: string[], callbacks: SDKCallbacks) {
         this.params = params
         this.pads = pads
         this.callbacks = callbacks

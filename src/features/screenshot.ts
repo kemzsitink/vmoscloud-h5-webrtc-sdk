@@ -5,17 +5,17 @@ export default class ScreenshotOverlay {
   private canvas: HTMLCanvasElement;
   private context: CanvasRenderingContext2D;
 
-  constructor(videoContainer: HTMLDivElement, rotateType: number = 0) {
+  constructor(videoContainer: HTMLDivElement, rotateType = 0) {
     this.videoContainer = videoContainer;
 
     this.video = this.videoContainer?.querySelector(
       "video"
-    ) as HTMLVideoElement;
+    )!;
     this.rotateType = rotateType;
     this.canvas = document.createElement("canvas");
     this.context = this.canvas.getContext("2d", {
       willReadFrequently: true,
-    }) as CanvasRenderingContext2D;
+    })!;
     this.initCanvas();
   }
 
@@ -75,7 +75,7 @@ export default class ScreenshotOverlay {
   public setScreenshotrotateType(rotateType: 0 | 1 = 0) {
     // 创建一个临时画布
     const tempCanvas = document.createElement("canvas");
-    const tempContext = tempCanvas.getContext("2d") as CanvasRenderingContext2D;
+    const tempContext = tempCanvas.getContext("2d")!;
 
     // 设置临时画布的尺寸为当前画布尺寸
     tempCanvas.width = this.canvas.width;
@@ -99,12 +99,12 @@ export default class ScreenshotOverlay {
    * 截图并绘制在 canvas 上
    * @param rotateType 0:竖屏 1:横屏
    */
-  public takeScreenshot(rotateType: number = 0) {
+  public takeScreenshot(rotateType = 0) {
     this.rotateType = rotateType;
 
     this.video = this.videoContainer?.querySelector(
       "video"
-    ) as HTMLVideoElement;
+    )!;
     if (this.context && this.video) {
       const { offsetTop, offsetLeft, offsetWidth, offsetHeight } = this.video;
 

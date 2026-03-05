@@ -1,6 +1,6 @@
-import HuoshanRTC from "./huoshanRtc";
-import { COMMON_CODE } from "./constant";
-import type { CustomDefinition, SDKInitParams, RTCOptions, LogTime, SDKCallbacks } from "./type";
+import HuoshanRTC from "../rtc/huoshanRtc";
+import { COMMON_CODE } from "../core/constants";
+import type { CustomDefinition, SDKInitParams, RTCOptions, LogTime, SDKCallbacks } from "../core/types";
 
 interface VideoInjectionOptions {
   fileUrl?: string;
@@ -10,7 +10,7 @@ interface VideoInjectionOptions {
 
 class ArmcloudEngine {
   // SDK版本号
-  version: string = "1.3.0";
+  version = "1.3.0";
   // rtc实例
   rtcInstance: HuoshanRTC | null = null;
   // rtc初始化参数
@@ -309,7 +309,7 @@ class ArmcloudEngine {
   }
 
   /** app卸载 */
-  appUnInstall(pkgNames: Array<string>): void {
+  appUnInstall(pkgNames: string[]): void {
     if (this.rtcInstance) this.rtcInstance.appUnInstall(pkgNames);
   }
 
@@ -358,7 +358,7 @@ class ArmcloudEngine {
    * 该方法仅暂停远端流的接收，并不影响远端流的采集和发送。
    * @param mediaType 1 只控制音频; 2 只控制视频; 3 同时控制音频和视频
    */
-  pauseAllSubscribedStream(mediaType: number = 3): void {
+  pauseAllSubscribedStream(mediaType = 3): void {
     if (this.rtcInstance)
       this.rtcInstance.pauseAllSubscribedStream(mediaType);
   }
@@ -368,13 +368,13 @@ class ArmcloudEngine {
    * 该方法仅恢复远端流的接收，并不影响远端流的采集和发送。
    * @param mediaType 1 只控制音频; 2 只控制视频; 3 同时控制音频和视频
    */
-  resumeAllSubscribedStream(mediaType: number = 3): void {
+  resumeAllSubscribedStream(mediaType = 3): void {
     if (this.rtcInstance)
       this.rtcInstance.resumeAllSubscribedStream(mediaType);
   }
 
   /** 订阅房间内指定的通过摄像头/麦克风采集的媒体流 */
-  subscribeStream(mediaType: number = 2): Promise<void> {
+  subscribeStream(mediaType = 2): Promise<void> {
     if (!this.rtcInstance) {
       return Promise.reject(
         new Error(
@@ -386,7 +386,7 @@ class ArmcloudEngine {
   }
 
   /** 取消订阅房间内指定的通过摄像头/麦克风采集的媒体流 */
-  unsubscribeStream(mediaType: number = 2): Promise<void> {
+  unsubscribeStream(mediaType = 2): Promise<void> {
     if (!this.rtcInstance) {
       return Promise.reject(
         new Error(
@@ -394,7 +394,7 @@ class ArmcloudEngine {
         )
       );
     }
-    return this.rtcInstance!.unsubscribeStream(mediaType);
+    return this.rtcInstance.unsubscribeStream(mediaType);
   }
 
   async saveScreenShotToLocal(): Promise<ImageData | undefined> {
@@ -430,12 +430,12 @@ class ArmcloudEngine {
   }
 
   /** 旋转截图 */
-  setScreenshotRotation(rotation: number = 0): void {
+  setScreenshotRotation(rotation = 0): void {
     this.rtcInstance?.setScreenshotRotation(rotation);
   }
 
   /** 生成封面图 */
-  takeScreenshot(rotation: number = 0): void {
+  takeScreenshot(rotation = 0): void {
     this.rtcInstance?.takeScreenshot(rotation);
   }
 
@@ -475,6 +475,7 @@ class ArmcloudEngine {
   /** 获取无操作回收时间 */
   getAutoRecycleTime(): number | undefined {
     if (this.rtcInstance) return this.rtcInstance.getAutoRecycleTime();
+    return undefined;
   }
 
   /** 底部栏操作按键 */

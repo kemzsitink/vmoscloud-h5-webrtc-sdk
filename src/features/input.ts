@@ -1,4 +1,4 @@
-import type { RTCInstance } from "./type";
+import type { RTCInstance } from "../core/types";
 
 const keyCodeMap: Record<string, number> = {
   ArrowUp: 19,
