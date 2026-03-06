@@ -7,6 +7,7 @@ export class VideoElement {
     listener: EventListener;
     element: HTMLElement;
   }[] = [];
+  private observer: MutationObserver | null = null;
 
   constructor(private masterIdPrefix: string, private remoteUserId: string) {
     this.videoDomId = `${this.masterIdPrefix}_${this.remoteUserId}_armcloudVideo`;
@@ -24,6 +25,7 @@ export class VideoElement {
   /**
    * Creates the container structure. 
    * The vendor SDK will inject the actual <video> element into the containerId element.
+   * Native <video> is the absolute fastest way to render WebRTC with zero-copy decoding.
    */
   public createElements(): HTMLElement {
     if (this.mainElement) return this.mainElement;
@@ -51,6 +53,32 @@ export class VideoElement {
     });
 
     this.mainElement.appendChild(videoContainer);
+
+    // MutationObserver to optimize injected video element for zero latency
+    this.observer = new MutationObserver((mutationsList) => {
+      for (const mutation of mutationsList) {
+        if (mutation.type === "childList") {
+          mutation.addedNodes.forEach((node) => {
+            if (node.nodeName.toLowerCase() === "video") {
+              const videoElement = node as HTMLVideoElement;
+              videoElement.disablePictureInPicture = true;
+              videoElement.playsInline = true;
+
+              // Apply hardware acceleration CSS to push to GPU
+              Object.assign(videoElement.style, {
+                transform: "translateZ(0)",
+                willChange: "transform",
+                backfaceVisibility: "hidden",
+                perspective: "1000",
+              });
+            }
+          });
+        }
+      }
+    });
+
+    this.observer.observe(videoContainer, { childList: true, subtree: true });
+
     return this.mainElement;
   }
 
@@ -81,6 +109,11 @@ export class VideoElement {
   }
 
   public destroy(): void {
+    if (this.observer) {
+      this.observer.disconnect();
+      this.observer = null;
+    }
+
     this.removeAllEvents();
 
     if (this.mainElement) {
@@ -94,3 +127,4 @@ export class VideoElement {
     this.eventListeners = [];
   }
 }
+

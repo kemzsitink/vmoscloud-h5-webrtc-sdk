@@ -1,5 +1,4 @@
 import type { TouchConfig } from "../../core/types";
-import type { TouchInfo } from "../../core/webrtcType";
 import type HuoshanRTC from "../huoshanRtc";
 import { generateTouchCoord } from "../../utils/mixins";
 import { isMobile, isTouchDevice } from "../../utils/index";
@@ -14,9 +13,24 @@ export class TouchInputHandler {
     properties: [],
     coords: [],
   };
-  private touchInfo: TouchInfo = generateTouchCoord();
+  private wheelConfig: any = {
+    coords: [{ pressure: 1.0, size: 1.0, x: 0, y: 0 }],
+    widthPixels: 0,
+    heightPixels: 0,
+    pointCount: 1,
+    properties: [{ id: 0, toolType: 1 }],
+    touchType: "gestureSwipe",
+    swipe: 1,
+  };
+  private poolCoords: any[] = [];
+  private poolProps: any[] = [];
 
-  constructor(private rtc: HuoshanRTC) {}
+  constructor(private rtc: HuoshanRTC) {
+    for (let i = 0; i < 10; i++) {
+      this.poolCoords.push(generateTouchCoord());
+      this.poolProps.push({ id: i, toolType: 1 });
+    }
+  }
 
   public bindEvents(videoDom: HTMLElement) {
     const isMobileFlag = isTouchDevice() || isMobile();
@@ -38,16 +52,12 @@ export class TouchInputHandler {
     videoDom.addEventListener("wheel", (e) => {
       if (this.rtc.options.disable) return;
       const { offsetX, offsetY, deltaY } = e;
-      const touchConfigMousedown = {
-        coords: [{ pressure: 1.0, size: 1.0, x: offsetX, y: offsetY }],
-        widthPixels: videoDom.clientWidth,
-        heightPixels: videoDom.clientHeight,
-        pointCount: 1,
-        properties: [{ id: 0, toolType: 1 }],
-        touchType: "gestureSwipe",
-        swipe: deltaY > 0 ? -1 : 1,
-      };
-      this.rtc.sendUserMessage(this.rtc.options.clientId, JSON.stringify(touchConfigMousedown));
+      this.wheelConfig.coords[0].x = offsetX;
+      this.wheelConfig.coords[0].y = offsetY;
+      this.wheelConfig.widthPixels = videoDom.clientWidth;
+      this.wheelConfig.heightPixels = videoDom.clientHeight;
+      this.wheelConfig.swipe = deltaY > 0 ? -1 : 1;
+      this.rtc.sendUserMessage(this.rtc.options.clientId, JSON.stringify(this.wheelConfig));
     });
 
     // Mouse leave
@@ -77,16 +87,13 @@ export class TouchInputHandler {
         }
       }
 
-      this.touchInfo = generateTouchCoord();
       if (!this.rtc.videoDomRect) this.rtc.updateDomCache();
       const videoDomIdRect = this.rtc.videoDomRect!;
       const distanceToTop = videoDomIdRect.top;
       const distanceToLeft = videoDomIdRect.left;
 
-      this.touchConfig.properties = [];
-      this.touchConfig.coords = [];
       const touchCount = isMobileFlag ? (e as TouchEvent)?.touches?.length : 1;
-      this.touchConfig.action = 0;
+      this.touchConfig.action = touchCount > 1 ? 261 : 0;
       this.touchConfig.pointCount = touchCount;
 
       const bigSide = this.rtc.videoDomWidth > this.rtc.videoDomHeight ? this.rtc.videoDomWidth : this.rtc.videoDomHeight;
@@ -105,7 +112,13 @@ export class TouchInputHandler {
 
       for (let i = 0; i < touchCount; i += 1) {
         const touch = isMobileFlag ? (e as TouchEvent).touches[i]! : (e as MouseEvent);
-        this.touchConfig.properties[i] = { id: i, toolType: 1 };
+        if (!this.poolCoords[i]) {
+          this.poolCoords[i] = generateTouchCoord();
+          this.poolProps[i] = { id: i, toolType: 1 };
+        }
+        const coord = this.poolCoords[i];
+        const prop = this.poolProps[i];
+        
         let x = 'offsetX' in touch ? touch.offsetX : undefined;
         let y = 'offsetX' in touch ? touch.offsetY : undefined;
         if (x === undefined) {
@@ -119,24 +132,17 @@ export class TouchInputHandler {
             y = videoDomIdRect.right - touch.clientX;
           }
         }
-        this.touchConfig.coords.push({
-          ...this.touchInfo,
-          orientation: 0.01 * Math.random(),
-          x: x ?? 0,
-          y: y ?? 0,
-        });
+        coord.orientation = Number((0.01 * Math.random()).toFixed(3));
+        coord.x = Math.round(x ?? 0);
+        coord.y = Math.round(y ?? 0);
+        
+        this.touchConfig.coords[i] = coord;
+        this.touchConfig.properties[i] = prop;
       }
       
-      const touchConfigToSend = {
-        action: touchCount > 1 ? 261 : 0,
-        widthPixels: this.touchConfig.widthPixels,
-        heightPixels: this.touchConfig.heightPixels,
-        pointCount: touchCount,
-        touchType: "gesture",
-        properties: this.touchConfig.properties,
-        coords: this.touchConfig.coords,
-      };
-      this.rtc.sendUserMessage(this.rtc.options.clientId, JSON.stringify(touchConfigToSend));
+      this.touchConfig.coords.length = touchCount;
+      this.touchConfig.properties.length = touchCount;
+      this.rtc.sendUserMessage(this.rtc.options.clientId, JSON.stringify(this.touchConfig));
     });
 
     // Touch/Mouse Move
@@ -151,11 +157,16 @@ export class TouchInputHandler {
       const touchCount = isMobileFlag ? (e as TouchEvent)?.touches?.length : 1;
       this.touchConfig.action = 2; // 触摸中
       this.touchConfig.pointCount = touchCount;
-      const coords = [];
 
       for (let i = 0; i < touchCount; i += 1) {
         const touch = isMobileFlag ? (e as TouchEvent).touches[i]! : (e as MouseEvent);
-        this.touchConfig.properties[i] = { id: i, toolType: 1 };
+        if (!this.poolCoords[i]) {
+          this.poolCoords[i] = generateTouchCoord();
+          this.poolProps[i] = { id: i, toolType: 1 };
+        }
+        const coord = this.poolCoords[i];
+        const prop = this.poolProps[i];
+        
         let x = 'offsetX' in touch ? touch.offsetX : undefined;
         let y = 'offsetX' in touch ? touch.offsetY : undefined;
         if (x === undefined) {
@@ -169,24 +180,16 @@ export class TouchInputHandler {
             y = videoDomIdRect.right - touch.clientX;
           }
         }
-        coords.push({
-          ...this.touchInfo,
-          orientation: 0.01 * Math.random(),
-          x: x ?? 0,
-          y: y ?? 0,
-        });
+        coord.orientation = Number((0.01 * Math.random()).toFixed(3));
+        coord.x = Math.round(x ?? 0);
+        coord.y = Math.round(y ?? 0);
+        
+        this.touchConfig.coords[i] = coord;
+        this.touchConfig.properties[i] = prop;
       }
-      this.touchConfig.coords = coords;
-      const touchConfigToSend = {
-        action: 2,
-        widthPixels: this.touchConfig.widthPixels,
-        heightPixels: this.touchConfig.heightPixels,
-        pointCount: touchCount,
-        touchType: "gesture",
-        properties: this.touchConfig.properties,
-        coords: this.touchConfig.coords,
-      };
-      this.rtc.sendUserMessage(this.rtc.options.clientId, JSON.stringify(touchConfigToSend));
+      this.touchConfig.coords.length = touchCount;
+      this.touchConfig.properties.length = touchCount;
+      this.rtc.sendUserMessage(this.rtc.options.clientId, JSON.stringify(this.touchConfig));
     });
 
     // Touch/Mouse End

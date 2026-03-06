@@ -1,8 +1,8 @@
 import type { TouchInfo } from "../core/webrtcType"
 export const generateTouchCoord = (): TouchInfo => {
   const params = {
-    pressure: 0.5 + 0.3 * Math.random(),
-    size: 0.05 + 0.03 * Math.random(),
+    pressure: Number((0.5 + 0.3 * Math.random()).toFixed(2)),
+    size: Number((0.05 + 0.03 * Math.random()).toFixed(2)),
     touchMajor: 80 + Math.floor(130 * Math.random()),
     touchMinor: 0,
     toolMajor: 0,
