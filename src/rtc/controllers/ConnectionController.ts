@@ -29,35 +29,37 @@ export class ConnectionController {
       console.warn("Disable Volc RTC log error:", e);
     }
 
-    this.rtc.engine = VERTC.createEngine(this.rtc.options.appId);
+    // Use createBLWEngine for ultra-low latency cloud phone streaming (ByteDance Low-latency Web Engine)
+    this.rtc.engine = VERTC.createBLWEngine(this.rtc.options.appId);
+    
     this.rtc.engine.setRemoteStreamRenderSync(false);
     if (this.rtc.enableMicrophone) {
       this.rtc.engine.setAudioProfile(AudioProfileType.fluent);
     }
 
-    // const widthBase: number = 768
-    // const heightBase: number = 1024
-    // const frameRate: number = 30
-    // const maxKbps: number = 4000
+    // Modern Video Encoder Configuration (Replaces deprecated setVideoCaptureConfig)
+    const widthBase = 768;
+    const heightBase = 1024;
+    const frameRate = 30;
+    const maxKbps = 4000;
 
-    // const setVideoEncoderConfig = (width: number, height: number): void => {
-    //   this.rtc.engine.setVideoEncoderConfig({
-    //     width,
-    //     height,
-    //     frameRate,
-    //     maxKbps
-    //   })
-    // }
+    const setVideoEncoderConfig = (width: number, height: number): void => {
+      this.rtc.engine?.setVideoEncoderConfig({
+        width,
+        height,
+        frameRate,
+        maxKbps
+      });
+    };
 
-    // setVideoEncoderConfig(widthBase, heightBase)
+    void setVideoEncoderConfig(widthBase, heightBase);
 
-    // this.rtc.engine.on(VERTC.events.onLocalVideoSizeChanged, (e: { info: { width: number; height: number } }) => {
-    //   const { width, height } = e.info
-
-    //   if (width === heightBase && height === widthBase) {
-    //     setVideoEncoderConfig(heightBase, widthBase)
-    //   }
-    // })
+    this.rtc.engine.on(VERTC.events.onLocalVideoSizeChanged, (e: { info: { width: number; height: number } }) => {
+      const { width, height } = e.info;
+      if (width === heightBase && height === widthBase) {
+        void setVideoEncoderConfig(heightBase, widthBase);
+      }
+    });
 
     /** 监听失败回调 */
     this.rtc.engine.on(VERTC.events.onError, (error) => {
@@ -76,7 +78,23 @@ export class ConnectionController {
 
     /** 用户订阅的远端音/视频流统计信息以及网络状况，统计周期为 2s */
     this.rtc.engine.on(VERTC.events.onRemoteStreamStats, (e) => {
-      this.rtc.callbacks.onRunInformation(e);
+      // Logic to extract advanced latency metrics including hidden fields
+      const stats = e as any;
+      const videoStats = stats.videoStats;
+      const audioStats = stats.audioStats;
+
+      const latencyInfo = {
+        rtt: videoStats?.rtt ?? audioStats?.rtt ?? 0,
+        totalRtt: videoStats?.totalRtt ?? audioStats?.totalRtt ?? 0,
+        e2eDelay: videoStats?.e2eDelay ?? audioStats?.e2eDelay ?? 0,
+        statsInterval: videoStats?.statsInterval ?? audioStats?.statsInterval ?? 2000,
+        jitterBufferDelay: audioStats?.jitterBufferDelay ?? 0,
+      };
+
+      this.rtc.callbacks.onRunInformation({
+        ...e,
+        latencyInfo,
+      });
     });
 
     /** 加入房间后，会以每2秒一次的频率，收到本端上行及下行的网络质量信息。 */
@@ -139,8 +157,8 @@ export class ConnectionController {
 
               const videoDom = document.getElementById(this.rtc.videoDomId);
               if (videoDom) {
-                videoDom.style.width = "0px";
-                videoDom.style.height = "0px";
+                videoDom.style.width = "100%";
+                videoDom.style.height = "100%";
 
                 this.rtc.updateDomCache();
                 const resizeObserver = new ResizeObserver(() => { this.rtc.updateDomCache(); });

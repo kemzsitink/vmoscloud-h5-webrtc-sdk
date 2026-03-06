@@ -12,12 +12,15 @@ import { TouchInputHandler } from "./handlers/TouchInputHandler";
 import { UIController } from "./controllers/UIController";
 import { MessageController } from "./controllers/MessageController";
 import { ConnectionController } from "./controllers/ConnectionController";
+import { VideoElement } from "../ui/videoElement";
 
 class HuoshanRTC {
   // 初始外部H5传入DomId
   public initDomId: string = "";
   // video容器id
   public videoDomId: string = "";
+  // Video element manager
+  public videoElement: VideoElement;
   // 鼠标、触摸事件时是否按下
   public hasPushDown = false;
   public enableMicrophone = true;
@@ -95,13 +98,14 @@ class HuoshanRTC {
 
     // 获取外部容器div元素
     const h5Dom = document.getElementById(this.initDomId);
-    // 创建一个id为armcloudVideo的新的div元素
-    const newDiv = document.createElement("div");
-    const divId = `${masterIdPrefix}_${padCode}_armcloudVideo`;
-    newDiv.setAttribute("id", divId);
-    this.videoDomId = divId;
+    
+    // Initialize VideoElement
+    this.videoElement = new VideoElement(masterIdPrefix, padCode);
+    this.videoDomId = this.videoElement.getVideoDomId();
+    const videoDom = this.videoElement.createElements();
+    
     // 将div元素添加到外部容器中
-    h5Dom?.appendChild(newDiv);
+    h5Dom?.appendChild(videoDom);
 
     this.deviceController = new DeviceController(this);
     this.streamController = new StreamController(this);

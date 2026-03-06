@@ -47,40 +47,48 @@ export class MessageController {
       userId: string;
       mediaType: MediaType;
     }) => {
+      // 检查是否是我们要订阅 cloud phone 用户
       if (e.userId === this.rtc.options.clientId) {
-        const player = document.querySelector(`#${this.rtc.videoDomId}`) as HTMLDivElement;
-
         this.rtc.addReportInfo({
-          describe: "订阅和播放房间内的音视频流",
+          describe: "开始订阅 và 播放云机音视频流",
           e,
         });
+
+        // 1. 确保 VideoElement 的容器已就绪并绑定到 SDK
+        // setRemoteVideoRotation 内部会调用 setRemoteVideoPlayer 映射到 VideoElement.getContainerId()
         await this.rtc.setRemoteVideoRotation(this.rtc.rotation);
 
+        // 2. 执行订阅
         await this.rtc.engine?.subscribeStream(
           this.rtc.options.clientId,
           this.rtc.options.mediaType
         );
 
         if (this.rtc.engine) {
-          // Force high quality stream for cloud gaming
+          // 3. 强制高质量流 (High quality for cloud gaming/phone)
           this.rtc.engine.setRemoteSimulcastStreamType(
             this.rtc.options.clientId,
             SimulcastStreamType.VIDEO_STREAM_HIGH
           );
 
+          // 4. 设置 SDK 内部 jitter buffer 目标
           this.rtc.engine.setJitterBufferTarget(
             this.rtc.options.clientId,
             StreamIndex.STREAM_INDEX_MAIN,
             this.rtc.options.latencyTarget ?? 0,
-            false // Non-progressive adjustment for extreme low latency
+            false 
           );
         }
 
+        // 5. 初始化截图覆盖层 (指向 outer videoDomId 以覆盖整个区域)
         if (!this.rtc.screenShotInstance) {
-          this.rtc.screenShotInstance = new ScreenshotOverlay(
-            player,
-            this.rtc.rotation
-          );
+          const player = document.getElementById(this.rtc.videoDomId);
+          if (player) {
+            this.rtc.screenShotInstance = new ScreenshotOverlay(
+              player as HTMLDivElement,
+              this.rtc.rotation
+            );
+          }
         }
       }
     };

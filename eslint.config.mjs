@@ -2,7 +2,7 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
     {
-        ignores: ["dist/**", "node_modules/**", "rollup.config.mjs"],
+        ignores: ["dist/**", "node_modules/**", "rollup.config.mjs", "src/vendor/**"],
     },
     ...tseslint.configs.strictTypeChecked,
     ...tseslint.configs.stylisticTypeChecked,

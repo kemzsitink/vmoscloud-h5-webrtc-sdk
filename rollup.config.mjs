@@ -8,19 +8,22 @@ export default {
     {
       file: 'dist/index.cjs.js',
       format: 'cjs',
-      sourcemap: true
+      sourcemap: true,
+      exports: 'named'
     },
     {
       file: 'dist/index.es.js',
       format: 'es',
-      sourcemap: true
+      sourcemap: true,
+      exports: 'named'
     },
     {
       file: 'dist/index.global.js',
       format: 'iife',
       name: 'ArmcloudRtc',
       sourcemap: true,
-      inlineDynamicImports: true
+      inlineDynamicImports: true,
+      exports: 'named'
     }
   ],
   plugins: [
@@ -30,7 +33,8 @@ export default {
     }),
     commonjs(),
     typescript({
-      tsconfig: './tsconfig.json'
+      tsconfig: './tsconfig.json',
+      noEmitOnError: true
     })
   ]
 };

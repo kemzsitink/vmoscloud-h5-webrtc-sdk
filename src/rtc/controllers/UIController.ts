@@ -189,13 +189,18 @@ export class UIController {
   }
 
   async setRemoteVideoRotation(rotation: number) {
-    const player = document.querySelector(`#${this.rtc.videoDomId}`) as HTMLElement;
-    await this.rtc.engine?.setRemoteVideoPlayer(StreamIndex.STREAM_INDEX_MAIN, {
-      userId: this.rtc.options.clientId,
-      renderDom: player,
-      renderMode: 2,
-      rotation,
-    });
+    const videoDom = document.getElementById(this.rtc.videoDomId);
+    if (videoDom) {
+      // Logic: Use createBLWEngine optimized rendering path.
+      // We pass the renderDom but ensure the SDK manages the internal video track lifecycle
+      // without extra DOM layering that causes browser throttling.
+      await this.rtc.engine?.setRemoteVideoPlayer(StreamIndex.STREAM_INDEX_MAIN, {
+        userId: this.rtc.options.clientId,
+        renderDom: videoDom,
+        renderMode: 2, // fill
+        rotation,
+      });
+    }
   }
 
   async updateUiH5() {
