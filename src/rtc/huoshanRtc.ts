@@ -128,6 +128,7 @@ class HuoshanRTC {
     this.logTime[key] = new Date().getTime();
   }
   addReportInfo(info: { describe: string; error?: unknown; res?: unknown; e?: unknown; msg?: unknown; user?: unknown }): void {
+    if (!this.options.isLog) return; // Tối ưu hóa cực đoan: Không cấp phát bộ nhớ nếu không bật log
     const time = new Date().getTime();
     this.errorInfo.push({
       type: "WebVolcanoRtc",

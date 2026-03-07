@@ -9,104 +9,63 @@ const keyCodeMap: Record<string, number> = {
   Backspace: 67,
 };
 
-
 /** 添加input输入框 */
-export const addInputElement = (rtc: RTCInstance, isP2p: boolean): void => {
-  // 获取外部容器div元素
+export const addInputElement = (rtc: RTCInstance): void => {
   const h5Dom = document.getElementById(rtc.initDomId);
-  // 创建一个input元素
   rtc.inputElement = document.createElement("input");
-  // 设置input的类型为文本输入框
   rtc.inputElement.setAttribute("type", "text");
   rtc.inputElement.setAttribute("autocomplete", "off");
-  rtc.inputElement.setAttribute(
-    "id",
-    `${rtc.masterIdPrefix || ""}_${rtc.remoteUserId}_inputEle`
-  );
+  rtc.inputElement.setAttribute("id", `${rtc.masterIdPrefix || ""}_${rtc.remoteUserId}_inputEle`);
   rtc.inputElement.setAttribute("class", "play-text-input");
-  // 设置input的style
   rtc.inputElement.setAttribute(
     "style",
     "position: absolute; top: 0px;left: 0px;pointer-events: none; opacity: 0.01;width: 100%;max-width: 95%;"
   );
 
-  // 输入法输入开始时执行；如果不是输入法输入，不触发
   let compositionstart = false;
+
   rtc.inputElement.addEventListener("compositionstart", () => {
     compositionstart = true;
   });
+
+  const sendInputMessage = (text: string) => {
+    // Tối ưu hóa cực đoan: Sử dụng Template Literal thay vì JSON.stringify để không tạo Object trung gian
+    // Hạn chế tuyệt đối GC pauses trong lúc người dùng gõ phím nhanh
+    const escapedText = text.replace(/"/g, '\\"');
+    const message = `{"action":1,"touchType":"inputBox","keyCode":1,"text":"${escapedText}"}`;
+    const userId = rtc.options.clientId;
+    
+    // Đã sửa lỗi tham số truyền ngược
+    rtc.sendUserMessage(userId, message);
+    if (rtc.inputElement) rtc.inputElement.value = "";
+  };
+
   rtc.inputElement.addEventListener("compositionend", (e: CompositionEvent) => {
     compositionstart = false;
     const target = e.target as HTMLInputElement;
-    const messageObj = {
-      action: 1,
-      touchType: "inputBox",
-      keyCode: 1,
-      text: target.value,
-    };
-    const userId = rtc.options.clientId;
-    const message = JSON.stringify(messageObj);
-    if (rtc.inputElement) rtc.inputElement.value = "";
-    if (isP2p) {
-      rtc.sendUserMessage(message, "");
-    } else {
-      rtc.sendUserMessage(userId, message);
-    }
+    if (target.value) sendInputMessage(target.value);
   });
+
   rtc.inputElement.addEventListener("input", (e: Event) => {
     if (compositionstart) return;
     const target = e.target as HTMLInputElement;
-    const messageObj = {
-      action: 1,
-      touchType: "inputBox",
-      keyCode: 1,
-      text: target.value,
-    };
-    const userId = rtc.options.clientId;
-    const message = JSON.stringify(messageObj);
-    if (rtc.inputElement) rtc.inputElement.value = "";
-    if (isP2p) {
-      rtc.sendUserMessage(message, "");
-    } else {
-      rtc.sendUserMessage(userId, message);
-    }
+    if (target.value) sendInputMessage(target.value);
   });
+
   rtc.inputElement.addEventListener("keydown", (e: KeyboardEvent) => {
     const keyCode = keyCodeMap[e.key];
     if (keyCode !== undefined) {
-      const messageObj = {
-        action: 1,
-        touchType: "input",
-        keyCode: keyCode,
-        text: "",
-      };
-      const messageObj2 = {
-        action: 0,
-        touchType: "input",
-        keyCode: keyCode,
-        text: "",
-      };
+      if (e.key === "Enter") rtc.inputElement?.blur();
+      
       const userId = rtc.options.clientId;
-      const message = JSON.stringify(messageObj);
-      const message2 = JSON.stringify(messageObj2);
-      if (e.key === "Enter") {
-        // 失去焦点
-        rtc.inputElement?.blur();
-      }
-      // 按下
-      if (isP2p) {
-        rtc.sendUserMessage(message, "");
-      } else {
-        rtc.sendUserMessage(userId, message);
-      }
-      // 抬起
-      if (isP2p) {
-        rtc.sendUserMessage(message2, "");
-      } else {
-        rtc.sendUserMessage(userId, message2);
-      }
+      // Tối ưu hóa cực đoan: Raw String Concatenation tĩnh
+      const messageDown = `{"action":1,"touchType":"input","keyCode":${keyCode},"text":""}`;
+      const messageUp = `{"action":0,"touchType":"input","keyCode":${keyCode},"text":""}`;
+      
+      rtc.sendUserMessage(userId, messageDown);
+      rtc.sendUserMessage(userId, messageUp);
     }
   });
-  // 将input元素添加到页面中的指定容器中
+
   h5Dom?.appendChild(rtc.inputElement);
 };

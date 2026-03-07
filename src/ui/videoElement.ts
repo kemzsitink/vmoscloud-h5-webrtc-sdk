@@ -38,6 +38,9 @@ export class VideoElement {
       height: "100%",
       position: "relative",
       backgroundColor: "#000",
+      touchAction: "none",
+      userSelect: "none",
+      webkitUserSelect: "none",
     });
 
     // Dedicated container for the SDK to inject its video element
@@ -66,6 +69,8 @@ export class VideoElement {
 
               // Apply hardware acceleration CSS to push to GPU
               Object.assign(videoElement.style, {
+                width: "100%",
+                height: "100%",
                 transform: "translateZ(0)",
                 willChange: "transform",
                 backfaceVisibility: "hidden",
@@ -127,4 +132,3 @@ export class VideoElement {
     this.eventListeners = [];
   }
 }
-

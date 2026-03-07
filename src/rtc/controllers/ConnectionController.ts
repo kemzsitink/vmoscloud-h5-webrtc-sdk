@@ -4,83 +4,6 @@ import huoshanGroupRtc from "../huoshanGroupRtc";
 import { addInputElement } from "../../features/input";
 import type { RTCOptions } from "../../core/types";
 
-// --- ZERO LATENCY SDP HACK ---
-// Intercept RTCPeerConnection to forcefully strip NACK and Google Congestion Control (GCC).
-// This prevents the browser from requesting retransmission and forces blind-streaming without bandwidth estimation.
-const OriginalRTCPeerConnection = window.RTCPeerConnection;
-
-const stripLatencyKillers = (sdp: string | undefined): string => {
-  if (!sdp) return "";
-  let modifiedSdp = sdp;
-
-  // 1. NACK & PLI (DO NOT KILL THEM WITHOUT INTRA-REFRESH/FEC)
-  // If we kill NACK, a single dropped packet forces a PLI.
-  // A PLI forces the server to send a massive I-Frame.
-  // The massive I-Frame causes network congestion -> Packet loss spikes -> 1-2s freeze.
-  // modifiedSdp = modifiedSdp.replace(/a=rtcp-fb:\d+ nack\r\n/g, "");
-  // modifiedSdp = modifiedSdp.replace(/a=rtcp-fb:\d+ nack pli\r\n/g, "");
-
-  // 2. Kill Google Congestion Control (GCC) & Bandwidth Estimation (BWE)
-  modifiedSdp = modifiedSdp.replace(/a=rtcp-fb:\d+ transport-cc\r\n/g, "");
-  modifiedSdp = modifiedSdp.replace(/a=extmap:\d+ http:\/\/www\.ietf\.org\/id\/draft-holmer-rmcat-transport-wide-cc-extensions-01\r\n/g, "");
-  modifiedSdp = modifiedSdp.replace(/a=rtcp-fb:\d+ goog-remb\r\n/g, "");
-  modifiedSdp = modifiedSdp.replace(/a=extmap:\d+ http:\/\/www\.webrtc\.org\/experiments\/rtp-hdrext\/abs-send-time\r\n/g, "");
-
-  // 3. Inject Playout Delay Extension safely (Authorize local playoutDelayHint=0)
-  if (!modifiedSdp.includes("http://www.webrtc.org/experiments/rtp-hdrext/playout-delay")) {
-    modifiedSdp = modifiedSdp.replace(/(a=rtcp-mux\r\n)/g, "$1a=extmap:14 http://www.webrtc.org/experiments/rtp-hdrext/playout-delay\r\n");
-  }
-
-  return modifiedSdp;
-};
-
-class PatchedRTCPeerConnection extends OriginalRTCPeerConnection {
-  // Reverted unsafe constructor override. We will hook into getReceivers instead.
-
-  override setLocalDescription(description?: RTCLocalSessionDescriptionInit): Promise<void> {
-    if (description && description.sdp) {
-      const oldLength = description.sdp.length;
-      description.sdp = stripLatencyKillers(description.sdp);
-      if (description.sdp.length !== oldLength) {
-        console.warn("[Zero-Latency Hack] Stripped NACK and GCC from Local SDP");
-      }
-    }
-    return super.setLocalDescription(description);
-  }
-
-  override async setRemoteDescription(description: RTCSessionDescriptionInit): Promise<void> {
-    if (description && description.sdp) {
-      const oldLength = description.sdp.length;
-      description.sdp = stripLatencyKillers(description.sdp);
-      if (description.sdp.length !== oldLength) {
-        console.warn("[Zero-Latency Hack] Stripped NACK and GCC from Remote SDP");
-      }
-    }
-
-    await super.setRemoteDescription(description);
-
-    // ---> KILL JITTER BUFFER SAFELY <---
-    // After remote description is set, receivers are usually created.
-    try {
-      const receivers = this.getReceivers();
-      receivers.forEach(receiver => {
-        if ('playoutDelayHint' in receiver) {
-          (receiver as any).playoutDelayHint = 0;
-          console.warn("[Zero-Latency Hack] Forced playoutDelayHint=0 on existing RTCRtpReceiver");
-        }
-      });
-    } catch (e) {
-      console.error("[Zero-Latency Hack] Failed to set playoutDelayHint", e);
-    }
-  }
-}
-
-// Override global object
-if (window.RTCPeerConnection.name !== "PatchedRTCPeerConnection") {
-  (window as any).RTCPeerConnection = PatchedRTCPeerConnection;
-}
-// ------------------------------
-
 export class ConnectionController {
   constructor(private rtc: HuoshanRTC) { }
 
@@ -93,50 +16,56 @@ export class ConnectionController {
       // 若不存在inputElement， 则创建一个隐藏的input输入框
 
       if (!this.rtc.options.disable) {
-        addInputElement(this.rtc as unknown as import('../../core/types').RTCInstance, true);
+        addInputElement(this.rtc as unknown as import('../../core/types').RTCInstance);
       }
     }
 
-    // Cấu hình tối ưu độ trễ cho Cloud Gaming/Cloud Phone
+    // Cấu hình tối ưu độ trễ CỰC ĐOAN (Extreme Low Latency) - Tinh chỉnh nghệ thuật
     try {
       VERTC.setLogConfig({ logLevel: "none" });
       VERTC.setParameter("LOG_SERVER_URL", "");
       VERTC.setParameter("FORCE_ENABLED_REPORT_CALLBACKS", []);
 
-      // 🚀 EXTREME LOW LATENCY HACKS (Bypass Volcengine safety limits)
-      // 1. Force hardware decoding/encoding
-      VERTC.setParameter("H264_HW_ENCODER" as any, true);
+      // 🚀 NGHỆ THUẬT TỐI ƯU SIÊU NHỎ
+      // 1. Tăng tốc kết nối & Truyền tin
+      VERTC.setParameter("PRE_ICE", true); // Thiết lập ICE sớm (Pre-connection)
+      VERTC.setParameter("SEND_MESSAGE_SYNC", true); // Gửi tin nhắn đồng bộ (giảm delay event loop)
+      VERTC.setParameter("SDK_CODEC_NEGOTIATION", false); // Tắt thương thảo codec (nếu phía server đã cố định H264)
+      
+      // 2. Ép mã hóa phần cứng & Bỏ qua lọc SEI
+      VERTC.setParameter("H264_HW_ENCODER", true);
+      VERTC.setParameter("SKIP_SEI_FILTER", true); // Bỏ qua lọc tin nhắn SEI để đẩy khung hình nhanh hơn
 
-      // 2. Kill A/V Sync entirely. Render frames the exact millisecond they arrive.
-      VERTC.setParameter("JITTER_STEPPER_MAX_AV_SYNC_DIFF" as any, 0);
-      VERTC.setParameter("JITTER_STEPPER_MAX_SET_DIFF" as any, 0);
+      // 3. Jitter Stepper "Zero-Wait"
+      VERTC.setParameter("JITTER_STEPPER_INTERVAL_MS", 4); 
+      VERTC.setParameter("JITTER_STEPPER_STEP_SIZE_MS", 4);
+      VERTC.setParameter("JITTER_STEPPER_MAX_AV_SYNC_DIFF", 0);
+      VERTC.setParameter("JITTER_STEPPER_MAX_SET_DIFF", 0);
+      VERTC.setParameter("JITTER_STEPPER_MAX_DIFF_EXCEED_COUNT", 1);
 
-      // 3. Make Jitter Stepper hyper-aggressive (check every 16ms ~ 60fps)
-      VERTC.setParameter("JITTER_STEPPER_INTERVAL_MS" as any, 16);
-      VERTC.setParameter("JITTER_STEPPER_STEP_SIZE_MS" as any, 16);
-      VERTC.setParameter("JITTER_STEPPER_MAX_DIFF_EXCEED_COUNT" as any, 1);
+      // 4. Stall Detection (Siêu nhạy - 100ms)
+      VERTC.setParameter("VIDEO_STALL_100MS", true);
+      VERTC.setParameter("VIDEO_STALL_DATA", 100);
+      VERTC.setParameter("AUDIO_STALL_DATA", 100);
 
-      // 4. Force browser playout delay hint
-      VERTC.setParameter("rtc.video.playout_delay_hint" as any, 0);
-      VERTC.setParameter("rtc.audio.playout_delay_hint" as any, 0);
-      VERTC.setParameter("rtc.video.enable_webcodec" as any, true);
-
-      // 5. Enable aggressive stall detection and disable autoplay workaround buffering
-      VERTC.setParameter("VIDEO_STALL_300MS" as any, true);
-      VERTC.setParameter("AUTOPLAY_WORKAROUND" as any, false);
+      // 5. Autoplay & Mute workaround
+      VERTC.setParameter("AUTOPLAY_WORKAROUND", false);
+      VERTC.setParameter("DISABLE_IOS_MUTE_WORKAROUND", true); // Tắt workaround gây trễ trên iOS nếu không cần thiết
     } catch (e) {
-      console.warn("Disable Volc RTC log error:", e);
+      console.warn("Artistic Latency Config Error:", e);
     }
 
-    // Use createBLWEngine for ultra-low latency cloud phone streaming (ByteDance Low-latency Web Engine)
+    // Sử dụng createBLWEngine (ByteDance Low-latency Web Engine)
     this.rtc.engine = VERTC.createBLWEngine(this.rtc.options.appId);
 
+    // Zero-wait Rendering
     this.rtc.engine.setRemoteStreamRenderSync(false);
+    
     if (this.rtc.enableMicrophone) {
       this.rtc.engine.setAudioProfile(AudioProfileType.fluent);
     }
 
-    // Modern Video Encoder Configuration (Replaces deprecated setVideoCaptureConfig)
+    // Cấu hình Encoder video hiện đại
     const widthBase = 768;
     const heightBase = 1024;
     const frameRate = 30;
@@ -177,31 +106,28 @@ export class ConnectionController {
 
     /** 用户订阅的远端音/视频流统计信息以及网络状况，统计周期为 2s */
     this.rtc.engine.on(VERTC.events.onRemoteStreamStats, (e) => {
-      // Logic to extract advanced latency metrics including hidden fields
-      const stats = e as any;
-      const videoStats = stats.videoStats;
-      const audioStats = stats.audioStats;
+      // Trích xuất thông tin độ trễ từ stats định kỳ
+      const videoStats = e.videoStats;
+      const audioStats = e.audioStats;
 
       const latencyInfo = {
         rtt: videoStats?.rtt ?? audioStats?.rtt ?? 0,
-        totalRtt: videoStats?.totalRtt ?? audioStats?.totalRtt ?? 0,
         e2eDelay: videoStats?.e2eDelay ?? audioStats?.e2eDelay ?? 0,
-        statsInterval: videoStats?.statsInterval ?? audioStats?.statsInterval ?? 2000,
         jitterBufferDelay: audioStats?.jitterBufferDelay ?? 0,
       };
 
-      // 🚀 Auto-Tuning Jitter Stepper based on RTT
+      // Tự động điều chỉnh Jitter Stepper dựa trên RTT (Round Trip Time) để đảm bảo độ ổn định
       try {
         if (latencyInfo.rtt > 0) {
           if (latencyInfo.rtt < 50) {
-            VERTC.setParameter("JITTER_STEPPER_INTERVAL_MS" as any, 16);
-            VERTC.setParameter("JITTER_STEPPER_MAX_DIFF_EXCEED_COUNT" as any, 1);
+            VERTC.setParameter("JITTER_STEPPER_INTERVAL_MS", 16);
+            VERTC.setParameter("JITTER_STEPPER_MAX_DIFF_EXCEED_COUNT", 1);
           } else if (latencyInfo.rtt >= 50 && latencyInfo.rtt < 100) {
-            VERTC.setParameter("JITTER_STEPPER_INTERVAL_MS" as any, 33);
-            VERTC.setParameter("JITTER_STEPPER_MAX_DIFF_EXCEED_COUNT" as any, 2);
+            VERTC.setParameter("JITTER_STEPPER_INTERVAL_MS", 33);
+            VERTC.setParameter("JITTER_STEPPER_MAX_DIFF_EXCEED_COUNT", 2);
           } else {
-            VERTC.setParameter("JITTER_STEPPER_INTERVAL_MS" as any, 60);
-            VERTC.setParameter("JITTER_STEPPER_MAX_DIFF_EXCEED_COUNT" as any, 5);
+            VERTC.setParameter("JITTER_STEPPER_INTERVAL_MS", 60);
+            VERTC.setParameter("JITTER_STEPPER_MAX_DIFF_EXCEED_COUNT", 5);
           }
         }
       } catch (e) {

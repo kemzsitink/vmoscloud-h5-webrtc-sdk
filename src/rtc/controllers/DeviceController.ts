@@ -65,7 +65,6 @@ export class DeviceController {
     };
     const userId = this.rtc.options.clientId;
     const message = JSON.stringify(messageObj);
-    console.log("手动传入经纬度", message);
     this.rtc.sendUserMessage(userId, message);
   }
 

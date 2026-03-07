@@ -71,12 +71,12 @@ export class MessageController {
             SimulcastStreamType.VIDEO_STREAM_HIGH
           );
 
-          // 4. 设置 SDK 内部 jitter buffer 目标
+          // 4. Thiết lập mục tiêu Jitter Buffer nội tại (Instant-jump)
           this.rtc.engine.setJitterBufferTarget(
             this.rtc.options.clientId,
             StreamIndex.STREAM_INDEX_MAIN,
             this.rtc.options.latencyTarget ?? 0,
-            false 
+            false // Progressive = false: Ép nhảy về 0ms ngay lập tức, không chờ điều chỉnh dần
           );
         }
 
@@ -119,42 +119,36 @@ export class MessageController {
       userId: string;
       message: string;
     }) => {
-      if (e.message) {
+      if (!e.message) return;
+      try {
         const msg = JSON.parse(e.message);
-        this.rtc.addReportInfo({
-          describe: "接收到房间内广播消息的回调",
-          msg,
-        });
+        
         // 消息透传
         if (msg.key === "message") {
           this.rtc.callbacks.onTransparentMsg(0, msg.data);
         }
         // ui消息
-        if (msg.key === "refreshUiType") {
+        else if (msg.key === "refreshUiType") {
           const msgData = JSON.parse(msg.data);
           this.rtc.roomMessage.isVertical = msgData.isVertical;
           // 若宽高没变，则不重新绘制页面
           if (
-            msgData.width === this.rtc.remoteResolution.width &&
-            msgData.height === this.rtc.remoteResolution.height
+            msgData.width !== this.rtc.remoteResolution.width ||
+            msgData.height !== this.rtc.remoteResolution.height
           ) {
-            console.log("宽高没变，不重新绘制页面", this.rtc.remoteUserId);
-            return;
+            this.rtc.uiController.initRotateScreen(msgData.width, msgData.height);
           }
-
-          this.rtc.uiController.initRotateScreen(msgData.width, msgData.height);
         }
         // 云机、本机键盘使用消息
-        if (msg.key === "inputState" && this.rtc.inputElement) {
+        else if (msg.key === "inputState" && this.rtc.inputElement) {
           this.rtc.checkInputState(msg);
         }
         // 将云机内容复制到本机剪切板
-        if (msg.key === "clipboard") {
-          if (this.rtc.options.saveCloudClipboard) {
-            const msgData = JSON.parse(msg.data);
-            this.rtc.callbacks.onOutputClipper(msgData);
-          }
+        else if (msg.key === "clipboard" && this.rtc.options.saveCloudClipboard) {
+          this.rtc.callbacks.onOutputClipper(JSON.parse(msg.data));
         }
+      } catch (err) {
+        // Bỏ qua lỗi parse để không sập luồng chính
       }
     };
     this.rtc.engine?.on(VERTC.events.onRoomMessageReceived, onRoomMessageReceived);
@@ -169,13 +163,10 @@ export class MessageController {
       userId: string;
       message: string;
     }) => {
-      if (e.message) {
+      if (!e.message) return;
+      try {
         const msg = JSON.parse(e.message);
-        this.rtc.addReportInfo({
-          describe:
-            "收到来自房间中其他用户通过 sendUserMessage 发来的点对点文本消息",
-          msg,
-        });
+        
         if (msg.key === "callBack") {
           const callData = JSON.parse(msg.data);
           const result = JSON.parse(callData.data);
@@ -192,18 +183,15 @@ export class MessageController {
               break;
           }
         }
-
-        if (msg.key === "equipmentInfo") {
-          this.rtc.callbacks?.onEquipmentInfo(JSON.parse(msg.data || []));
+        else if (msg.key === "equipmentInfo") {
+          this.rtc.callbacks?.onEquipmentInfo(JSON.parse(msg.data || "[]"));
         }
-        if (msg.key === "inputAdb") {
-          this.rtc.callbacks?.onAdbOutput(JSON.parse(msg.data || {}));
+        else if (msg.key === "inputAdb") {
+          this.rtc.callbacks?.onAdbOutput(JSON.parse(msg.data || "{}"));
         }
         // 音视频采集
-        if (msg.key === "videoAndAudioControl") {
-          if (!this.rtc.enableMicrophone && !this.rtc.enableCamera) {
-            return;
-          }
+        else if (msg.key === "videoAndAudioControl") {
+          if (!this.rtc.enableMicrophone && !this.rtc.enableCamera) return;
           const msgData = JSON.parse(msg.data);
 
           const pushType =
@@ -214,36 +202,20 @@ export class MessageController {
                 : MediaType.AUDIO;
           if (msgData.isOpen) {
             if (this.rtc.enableCamera) {
-              const videoDeviceId =
-                this.rtc.videoDeviceId ||
-                (msgData.isFront ? "user" : "environment");
-
+              const videoDeviceId = this.rtc.videoDeviceId || (msgData.isFront ? "user" : "environment");
               await this.rtc.engine?.setVideoCaptureDevice(videoDeviceId);
-
-              await this.rtc.engine
-                ?.startVideoCapture()
-                .then((res: unknown) => {
-                  this.rtc.callbacks.onVideoInit(res);
-                  this.rtc.engine?.publishStream(MediaType.VIDEO);
-                })
-                .catch((err: unknown) => {
-                  this.rtc.callbacks.onVideoError(err);
-                });
+              this.rtc.engine?.startVideoCapture().then((res: unknown) => {
+                this.rtc.callbacks.onVideoInit(res);
+                this.rtc.engine?.publishStream(MediaType.VIDEO);
+              }).catch((err: unknown) => this.rtc.callbacks.onVideoError(err));
             }
 
             if (this.rtc.enableMicrophone) {
-              if (this.rtc.audioDeviceId) {
-                await this.rtc.engine?.setAudioCaptureDevice(this.rtc.audioDeviceId);
-              }
-              await this.rtc.engine
-                ?.startAudioCapture()
-                .then((res: unknown) => {
-                  this.rtc.callbacks.onAudioInit(res);
-                  this.rtc.engine?.publishStream(MediaType.AUDIO);
-                })
-                .catch((err: unknown) => {
-                  this.rtc.callbacks.onAudioError(err);
-                });
+              if (this.rtc.audioDeviceId) await this.rtc.engine?.setAudioCaptureDevice(this.rtc.audioDeviceId);
+              this.rtc.engine?.startAudioCapture().then((res: unknown) => {
+                this.rtc.callbacks.onAudioInit(res);
+                this.rtc.engine?.publishStream(MediaType.AUDIO);
+              }).catch((err: unknown) => this.rtc.callbacks.onAudioError(err));
             }
           } else {
             await this.rtc.engine?.stopAudioCapture();
@@ -252,27 +224,24 @@ export class MessageController {
           }
         }
         // 云机、本机键盘使用消息
-        if (msg.key === "inputState" && this.rtc.inputElement) {
+        else if (msg.key === "inputState" && this.rtc.inputElement) {
           this.rtc.checkInputState(msg);
         }
         // 音频采集
-        if (msg.key === "audioControl" && this.rtc.enableMicrophone) {
+        else if (msg.key === "audioControl" && this.rtc.enableMicrophone) {
           const msgData = JSON.parse(msg.data);
           if (msgData.isOpen) {
-            this.rtc.engine
-              ?.startAudioCapture()
-              .then((res: unknown) => {
-                this.rtc.callbacks.onAudioInit(res);
-                this.rtc.engine?.publishStream(MediaType.AUDIO);
-              })
-              .catch((error: unknown) => {
-                this.rtc.callbacks.onAudioError(error);
-              });
+            this.rtc.engine?.startAudioCapture().then((res: unknown) => {
+              this.rtc.callbacks.onAudioInit(res);
+              this.rtc.engine?.publishStream(MediaType.AUDIO);
+            }).catch((error: unknown) => this.rtc.callbacks.onAudioError(error));
           } else {
             this.rtc.engine?.stopAudioCapture();
             this.rtc.engine?.unpublishStream(MediaType.AUDIO);
           }
         }
+      } catch (err) {
+        // Bỏ qua lỗi parse
       }
     };
     this.rtc.engine?.on(VERTC.events.onUserMessageReceived, onUserMessageReceived);

@@ -60,7 +60,6 @@ export class UIController {
   }
 
   takeScreenshot(rotation = 0) {
-    console.log("生成封面图", this.rtc.remoteUserId);
     this.rtc.screenShotInstance?.takeScreenshot(rotation);
   }
 
@@ -260,6 +259,6 @@ export class UIController {
       targetRotateType = width > height ? 1 : 0;
     }
 
-    await this.rtc.rotateScreen(targetRotateType);
+    await this.rotateScreen(targetRotateType);
   }
 }

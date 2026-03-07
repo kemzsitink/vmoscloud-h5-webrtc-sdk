@@ -4,26 +4,37 @@ export class InputController {
   constructor(private rtc: HuoshanRTC) {}
 
   sendGroupInputString(pads: string[], strs: string[]): void {
-    strs?.map((v: string, index: number) => {
+    const rtc = this.rtc;
+    if (!strs || !pads) return;
+    
+    const count = strs.length;
+    for (let i = 0; i < count; i++) {
+      const s = strs[i];
+      if (s === undefined) continue;
       const message = JSON.stringify({
-        text: v,
-        pads: [pads[index]],
+        text: s,
+        pads: [pads[i]],
         touchType: "inputBox",
       });
-      console.log(message);
-      this.rtc.groupRtc?.sendRoomMessage(message);
-    });
+      rtc.groupRtc?.sendRoomMessage(message);
+    }
   }
 
   sendGroupInputClipper(pads: string[], strs: string[]): void {
-    strs?.map((v: string, index: number) => {
+    const rtc = this.rtc;
+    if (!strs || !pads) return;
+
+    const count = strs.length;
+    for (let i = 0; i < count; i++) {
+      const s = strs[i];
+      if (s === undefined) continue;
       const message = JSON.stringify({
-        text: v,
-        pads: [pads[index]],
+        text: s,
+        pads: [pads[i]],
         touchType: "clipboard",
       });
-      this.rtc.groupRtc?.sendRoomMessage(message);
-    });
+      rtc.groupRtc?.sendRoomMessage(message);
+    }
   }
 
   async sendInputClipper(inputStr: string) {
