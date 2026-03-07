@@ -16,6 +16,8 @@ export class TouchInputHandler {
   
   private poolCoords: any[] = [];
   private poolProps: any[] = [];
+  private lastCoordsJson = "";
+  private lastPropsJson = "";
 
   constructor(private rtc: HuoshanRTC) {
     for (let i = 0; i < 10; i++) {
@@ -122,10 +124,14 @@ export class TouchInputHandler {
     const touchCount = touches ? touches.length : 0;
     
     // Logic gốc cho mouseleave hoặc touches rỗng khi Up
-    if (touchCount === 0 && action !== 1) return;
+    if (touchCount === 0 && action !== 1 && e != null) return;
 
     this.touchConfig.action = (action === 0 && touchCount > 1) ? 261 : action;
-    this.touchConfig.pointCount = isMobileFlag ? touchCount : 1;
+
+    const isValidTouch = isMobileFlag ? touchCount > 0 : e != null;
+    if (isValidTouch) {
+      this.touchConfig.pointCount = isMobileFlag ? touchCount : 1;
+    }
 
     const rect = rtc.videoDomRect!;
     const rectLeft = rect.left;
@@ -140,30 +146,34 @@ export class TouchInputHandler {
     let coordsJson = "";
     let propsJson = "";
 
-    // Logic gốc xử lý mảng
-    const iterations = isMobileFlag ? touchCount : 1;
-    for (let i = 0; i < iterations; i++) {
-      const touch = isMobileFlag ? (touches as TouchList)[i] : (e as MouseEvent);
-      const poolCoord = this.poolCoords[i];
-      
-      // Nếu e null (mouseleave), dùng tọa độ 0 như logic gốc
-      let x = touch ? (touch.clientX - rectLeft) : 0;
-      let y = touch ? (touch.clientY - rectTop) : 0;
+    if (isValidTouch) {
+      const iterations = isMobileFlag ? touchCount : 1;
+      for (let i = 0; i < iterations; i++) {
+        const touch = isMobileFlag ? (touches as TouchList)[i]! : (e as MouseEvent);
+        const poolCoord = this.poolCoords[i];
+        
+        let x = touch.clientX - rectLeft;
+        let y = touch.clientY - rectTop;
 
-      if (isRotated1) {
-        const tx = x; x = rectHeight - y; y = tx;
-      } else if (isRotated0) {
-        const tx = x; x = y; y = rectWidth - tx;
+        if (isRotated1) {
+          const tx = x; x = rectHeight - y; y = tx;
+        } else if (isRotated0) {
+          const tx = x; x = y; y = rectWidth - tx;
+        }
+
+        const rx = x | 0;
+        const ry = y | 0;
+
+        const orientation = (touch && 'rotationAngle' in touch) ? Number((touch as any).rotationAngle.toFixed(3)) : 0;
+
+        coordsJson += (i > 0 ? "," : "") + `{"x":${rx},"y":${ry},"pressure":${poolCoord.pressure},"size":${poolCoord.size},"touchMajor":${poolCoord.touchMajor},"touchMinor":${poolCoord.touchMinor},"toolMajor":${poolCoord.toolMajor},"toolMinor":${poolCoord.toolMinor},"orientation":${orientation}}`;
+        propsJson += (i > 0 ? "," : "") + `{"id":${i},"toolType":1}`;
       }
-
-      // Wisebite: Chỉ thay thế Math.round bằng bitwise
-      const rx = x | 0;
-      const ry = y | 0;
-
-      const orientation = Number((0.01 * Math.random()).toFixed(3));
-
-      coordsJson += (i > 0 ? "," : "") + `{"x":${rx},"y":${ry},"pressure":${poolCoord.pressure},"size":${poolCoord.size},"touchMajor":${poolCoord.touchMajor},"touchMinor":${poolCoord.touchMinor},"toolMajor":${poolCoord.toolMajor},"toolMinor":${poolCoord.toolMinor},"orientation":${orientation}}`;
-      propsJson += (i > 0 ? "," : "") + `{"id":${i},"toolType":1}`;
+      this.lastCoordsJson = coordsJson;
+      this.lastPropsJson = propsJson;
+    } else {
+      coordsJson = this.lastCoordsJson;
+      propsJson = this.lastPropsJson;
     }
 
     // Wisebite: Manual String Building
