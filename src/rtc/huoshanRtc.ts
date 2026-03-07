@@ -282,20 +282,23 @@ class HuoshanRTC {
     message: string,
     notSendInGroups?: boolean
   ) {
-    try {
-      // 重置无操作回收定时器 (Throttled inside the method)
+    // Wisebite: Throttled recovery timer reset
+    const now = Date.now();
+    if (now - this.lastTimerResetTime > 1000) {
       this.triggerRecoveryTimeCallback();
+      this.lastTimerResetTime = now;
+    }
 
-      // Optimize: Only check group control if it's explicitly enabled to avoid branching overhead
+    try {
       if (this.isGroupControl && !notSendInGroups) {
         return await this.sendGroupRoomMessage(message);
       }
-
       return await this.engine?.sendUserMessage(userId, message);
-      } catch (error: unknown) {
+    } catch (error: unknown) {
       this.callbacks?.onSendUserError(error);
-      return;
-      }  }
+      return Promise.reject(error);
+    }
+  }
   /** 群控退出房间 */
   public kickItOutRoom(pads: string[]): void {
     this.sendGroupRoomMessage(
