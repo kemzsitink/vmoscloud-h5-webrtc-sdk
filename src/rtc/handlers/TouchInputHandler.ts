@@ -41,7 +41,7 @@ export class TouchInputHandler {
       w = bigSide; h = smallSide;
     }
     
-    // Wisebite: Ép số nguyên bằng bitwise
+    // Wisebite: Chỉ thay thế toán tử ép kiểu
     this.touchConfig.widthPixels = w | 0;
     this.touchConfig.heightPixels = h | 0;
   }
@@ -61,11 +61,11 @@ export class TouchInputHandler {
       if (rtc.options.disable || !rtc.videoDomRect) return;
       const swipe = e.deltaY > 0 ? -1 : 1;
       
-      // Wisebite cho tọa độ Wheel
       const rx = (e.clientX - rtc.videoDomRect.left) | 0;
       const ry = (e.clientY - rtc.videoDomRect.top) | 0;
 
-      const msg = `{"coords":[{"pressure":1,"size":1,"x":${rx},"y":${ry}}],"widthPixels":${this.touchConfig.widthPixels},"heightPixels":${this.touchConfig.heightPixels},"pointCount":1,"properties":[{"id":0,"toolType":1}],"touchType":"gestureSwipe","swipe":${swipe}}`;
+      // Wisebite: Manual String cho Wheel
+      const msg = `{"coords":[{"pressure":1.0,"size":1.0,"x":${rx},"y":${ry}}],"widthPixels":${this.touchConfig.widthPixels},"heightPixels":${this.touchConfig.heightPixels},"pointCount":1,"properties":[{"id":0,"toolType":1}],"touchType":"gestureSwipe","swipe":${swipe}}`;
       rtc.sendUserMessage(rtc.options.clientId, msg);
     }, { passive: true });
 
@@ -97,29 +97,36 @@ export class TouchInputHandler {
       if (rtc.options.disable) return;
       rtc.hasPushDown = false;
       
-      if (isMobileFlag && (e as TouchEvent).touches.length > 0) return;
-      
-      // Manual String cho sự kiện Up
-      const msg = `{"action":1,"widthPixels":${this.touchConfig.widthPixels},"heightPixels":${this.touchConfig.heightPixels},"pointCount":1,"touchType":"gesture","properties":[{"id":0,"toolType":1}],"coords":[{"x":0,"y":0,"pressure":0,"size":0}]}`;
-      rtc.sendUserMessage(rtc.options.clientId, msg);
+      // Khôi phục logic gốc: Up event
+      if (isMobileFlag) {
+        if ((e as TouchEvent).touches.length === 0) {
+          this.processEvent(e, 1, isMobileFlag);
+        }
+      } else {
+        this.processEvent(e, 1, isMobileFlag);
+      }
     });
 
     videoDom.addEventListener("mouseleave", () => {
       const rtc = this.rtc;
       if (rtc.options.disable || !rtc.hasPushDown) return;
       rtc.hasPushDown = false;
-      const msg = `{"action":1,"widthPixels":${this.touchConfig.widthPixels},"heightPixels":${this.touchConfig.heightPixels},"pointCount":1,"touchType":"gesture","properties":[{"id":0,"toolType":1}],"coords":[{"x":0,"y":0,"pressure":0,"size":0}]}`;
-      rtc.sendUserMessage(rtc.options.clientId, msg);
+      this.processEvent(null!, 1, isMobileFlag);
     });
   }
 
   private processEvent(e: Event, action: number, isMobileFlag: boolean) {
     const rtc = this.rtc;
-    const touches = isMobileFlag ? (e as TouchEvent).touches : [e as MouseEvent];
-    const touchCount = touches.length;
+    // Khôi phục logic gốc lấy touches
+    const touches = isMobileFlag ? (e as TouchEvent)?.touches : [e as MouseEvent];
+    const touchCount = touches ? touches.length : 0;
+    
+    // Logic gốc cho mouseleave hoặc touches rỗng khi Up
     if (touchCount === 0 && action !== 1) return;
 
-    const finalAction = (action === 0 && touchCount > 1) ? 261 : action;
+    this.touchConfig.action = (action === 0 && touchCount > 1) ? 261 : action;
+    this.touchConfig.pointCount = isMobileFlag ? touchCount : 1;
+
     const rect = rtc.videoDomRect!;
     const rectLeft = rect.left;
     const rectTop = rect.top;
@@ -133,13 +140,15 @@ export class TouchInputHandler {
     let coordsJson = "";
     let propsJson = "";
 
-    for (let i = 0; i < touchCount; i++) {
-      const touch = touches[i] as any;
+    // Logic gốc xử lý mảng
+    const iterations = isMobileFlag ? touchCount : 1;
+    for (let i = 0; i < iterations; i++) {
+      const touch = isMobileFlag ? (touches as TouchList)[i] : (e as MouseEvent);
       const poolCoord = this.poolCoords[i];
       
-      // Đảm bảo tọa độ chính xác bằng clientX
-      let x = touch.clientX - rectLeft;
-      let y = touch.clientY - rectTop;
+      // Nếu e null (mouseleave), dùng tọa độ 0 như logic gốc
+      let x = touch ? (touch.clientX - rectLeft) : 0;
+      let y = touch ? (touch.clientY - rectTop) : 0;
 
       if (isRotated1) {
         const tx = x; x = rectHeight - y; y = tx;
@@ -147,19 +156,18 @@ export class TouchInputHandler {
         const tx = x; x = y; y = rectWidth - tx;
       }
 
-      // Wisebite: Bitwise OR cho tọa độ
+      // Wisebite: Chỉ thay thế Math.round bằng bitwise
       const rx = x | 0;
       const ry = y | 0;
 
-      // Khôi phục orientation biến thiên nhẹ để server nhận diện gesture chính xác
-      const orientation = action === 2 ? 0 : Number((0.01 * Math.random()).toFixed(3));
+      const orientation = Number((0.01 * Math.random()).toFixed(3));
 
-      // Nối chuỗi thủ công cực nhanh
       coordsJson += (i > 0 ? "," : "") + `{"x":${rx},"y":${ry},"pressure":${poolCoord.pressure},"size":${poolCoord.size},"touchMajor":${poolCoord.touchMajor},"touchMinor":${poolCoord.touchMinor},"toolMajor":${poolCoord.toolMajor},"toolMinor":${poolCoord.toolMinor},"orientation":${orientation}}`;
       propsJson += (i > 0 ? "," : "") + `{"id":${i},"toolType":1}`;
     }
 
-    const message = `{"action":${finalAction},"widthPixels":${this.touchConfig.widthPixels},"heightPixels":${this.touchConfig.heightPixels},"pointCount":${touchCount},"touchType":"gesture","properties":[${propsJson}],"coords":[${coordsJson}]}`;
+    // Wisebite: Manual String Building
+    const message = `{"action":${this.touchConfig.action},"widthPixels":${this.touchConfig.widthPixels},"heightPixels":${this.touchConfig.heightPixels},"pointCount":${this.touchConfig.pointCount},"touchType":"gesture","properties":[${propsJson}],"coords":[${coordsJson}]}`;
     
     rtc.sendUserMessage(rtc.options.clientId, message);
   }
