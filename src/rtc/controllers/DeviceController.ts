@@ -5,167 +5,78 @@ export class DeviceController {
   constructor(private rtc: HuoshanRTC) {}
 
   getEquipmentInfo(type: "app" | "attr") {
-    this.rtc.sendUserMessage(
-      this.rtc.options.clientId,
-      this.rtc.getMsgTemplate("equipmentInfo", { type }),
-      true
-    );
+    const msg = `{"touchType":"equipmentInfo","content":"{\\"type\\":\\"${type}\\"}"}`;
+    this.rtc.sendUserMessage(this.rtc.options.clientId, msg, true);
   }
 
   appUnInstall(pkgNames: string[]) {
-    this.rtc.sendUserMessage(
-      this.rtc.options.clientId,
-      this.rtc.getMsgTemplate("appUnInstall", pkgNames),
-      true
-    );
+    // Tối ưu hóa: Nối chuỗi mảng pkgNames
+    const pkgStr = `["${pkgNames.join('","')}"]`;
+    const msg = `{"touchType":"appUnInstall","content":${pkgStr}}`;
+    this.rtc.sendUserMessage(this.rtc.options.clientId, msg, true);
   }
 
   sendShakeInfo(time: number): void {
-    const userId = this.rtc.options.clientId;
+    const rtc = this.rtc;
+    const userId = rtc.options.clientId;
     const shake = new Shake();
+    
     shake.startShakeSimulation(time, (content: any) => {
-      const getOptions = (sensorType: string): string => {
-        return JSON.stringify({
-          coords: [],
-          heightPixels: 0,
-          isOpenScreenFollowRotation: false,
-          keyCode: 0,
-          pointCount: 0,
-          properties: [],
-          text: "",
-          touchType: "eventSdk",
-          widthPixels: 0,
-          action: 0,
-          content: JSON.stringify({
-            ...content,
-            type: "sdkSensor",
-            sensorType,
-          }),
-        });
+      // Wisebite: Nối chuỗi cực nhanh cho dữ liệu sensor (tần suất cực cao)
+      const buildSensorMsg = (sensorType: string) => {
+        const innerContent = `{\\"x\\":${content.x},\\"y\\":${content.y},\\"z\\":${content.z},\\"type\\":\\"sdkSensor\\",\\"sensorType\\":\\"${sensorType}\\"}`;
+        return `{"coords":[],"heightPixels":0,"isOpenScreenFollowRotation":false,"keyCode":0,"pointCount":0,"properties":[],"text":"","touchType":"eventSdk","widthPixels":0,"action":0,"content":"${innerContent}"}`;
       };
-      this.rtc.sendUserMessage(userId, getOptions("gyroscope"));
-      this.rtc.sendUserMessage(userId, getOptions("gravity"));
-      this.rtc.sendUserMessage(userId, getOptions("acceleration"));
+      
+      rtc.sendUserMessage(userId, buildSensorMsg("gyroscope"));
+      rtc.sendUserMessage(userId, buildSensorMsg("gravity"));
+      rtc.sendUserMessage(userId, buildSensorMsg("acceleration"));
     });
   }
 
   setGPS(longitude: number, latitude: number) {
-    const contentObj1 = {
-      latitude,
-      longitude,
-      time: new Date().getTime(),
-    };
-    const contentObj2 = {
-      type: "sdkLocation",
-      content: JSON.stringify(contentObj1),
-    };
-    const messageObj = {
-      touchType: "eventSdk",
-      content: JSON.stringify(contentObj2),
-    };
-    const userId = this.rtc.options.clientId;
-    const message = JSON.stringify(messageObj);
-    this.rtc.sendUserMessage(userId, message);
+    const now = Date.now();
+    const inner = `{\\"latitude\\":${latitude},\\"longitude\\":${longitude},\\"time\\":${now}}`;
+    const msg = `{"touchType":"eventSdk","content":"{\\"type\\":\\"sdkLocation\\",\\"content\\":\\"${inner}\\"}"}`;
+    this.rtc.sendUserMessage(this.rtc.options.clientId, msg);
   }
 
   executeAdbCommand(command: string) {
-    const userId = this.rtc.options.clientId;
-    const message = JSON.stringify({
-      touchType: "eventSdk",
-      content: JSON.stringify({
-        type: "inputAdb",
-        content: command,
-      }),
-    });
-    this.rtc.sendUserMessage(userId, message);
+    const cmd = command.replace(/"/g, '\\"');
+    const msg = `{"touchType":"eventSdk","content":"{\\"type\\":\\"inputAdb\\",\\"content\\":\\"${cmd}\\"}"}`;
+    this.rtc.sendUserMessage(this.rtc.options.clientId, msg);
   }
 
   sendCommand(command: string) {
-    switch (command) {
-      case "back":
-        this.goAppUpPage();
-        break;
-      case "home":
-        this.goAppHome();
-        break;
-      case "menu":
-        this.goAppMenu();
-        break;
-      default:
-        break;
-    }
+    if (command === "back") this.goAppUpPage();
+    else if (command === "home") this.goAppHome();
+    else if (command === "menu") this.goAppMenu();
   }
 
   goAppUpPage() {
-    const messageObj2 = {
-      action: 0,
-      touchType: "keystroke",
-      keyCode: 4,
-      text: "",
-    };
-    const userId = this.rtc.options.clientId;
-    const message2 = JSON.stringify(messageObj2);
-    if (userId) {
-      this.rtc.sendUserMessage(userId, message2);
-    }
+    const msg = '{"action":0,"touchType":"keystroke","keyCode":4,"text":""}';
+    this.rtc.sendUserMessage(this.rtc.options.clientId, msg);
   }
 
   goAppHome() {
-    const messageObj = {
-      action: 1,
-      touchType: "keystroke",
-      keyCode: 3,
-      text: "",
-    };
-    const userId = this.rtc.options.clientId;
-    const message = JSON.stringify(messageObj);
-    if (userId) {
-      this.rtc.sendUserMessage(userId, message);
-    }
+    const msg = '{"action":1,"touchType":"keystroke","keyCode":3,"text":""}';
+    this.rtc.sendUserMessage(this.rtc.options.clientId, msg);
   }
 
   goAppMenu() {
-    const messageObj = {
-      action: 1,
-      touchType: "keystroke",
-      keyCode: 187,
-      text: "",
-    };
-
-    const userId = this.rtc.options.clientId;
-    const message = JSON.stringify(messageObj);
-    if (userId) {
-      this.rtc.sendUserMessage(userId, message);
-    }
+    const msg = '{"action":1,"touchType":"keystroke","keyCode":187,"text":""}';
+    this.rtc.sendUserMessage(this.rtc.options.clientId, msg);
   }
 
   increaseVolume() {
     this.rtc.startPlay();
-    const messageObj = {
-      action: 1,
-      touchType: "keystroke",
-      keyCode: 24,
-      text: "",
-    };
-    const userId = this.rtc.options.clientId;
-    const message = JSON.stringify(messageObj);
-    if (userId) {
-      this.rtc.sendUserMessage(userId, message, true);
-    }
+    const msg = '{"action":1,"touchType":"keystroke","keyCode":24,"text":""}';
+    this.rtc.sendUserMessage(this.rtc.options.clientId, msg, true);
   }
 
   decreaseVolume() {
     this.rtc.startPlay();
-    const messageObj = {
-      action: 1,
-      touchType: "keystroke",
-      keyCode: 25,
-      text: "",
-    };
-    const userId = this.rtc.options.clientId;
-    const message = JSON.stringify(messageObj);
-    if (userId) {
-      this.rtc.sendUserMessage(userId, message, true);
-    }
+    const msg = '{"action":1,"touchType":"keystroke","keyCode":25,"text":""}';
+    this.rtc.sendUserMessage(this.rtc.options.clientId, msg, true);
   }
 }

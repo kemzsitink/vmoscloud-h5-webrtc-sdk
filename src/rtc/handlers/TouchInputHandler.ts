@@ -41,6 +41,7 @@ export class TouchInputHandler {
       w = bigSide; h = smallSide;
     }
     
+    // Wisebite: Ép số nguyên bằng bitwise
     this.touchConfig.widthPixels = w | 0;
     this.touchConfig.heightPixels = h | 0;
   }
@@ -60,19 +61,12 @@ export class TouchInputHandler {
       if (rtc.options.disable || !rtc.videoDomRect) return;
       const swipe = e.deltaY > 0 ? -1 : 1;
       
+      // Wisebite cho tọa độ Wheel
       const rx = (e.clientX - rtc.videoDomRect.left) | 0;
       const ry = (e.clientY - rtc.videoDomRect.top) | 0;
 
-      const wheelMsg = {
-        coords: [{ pressure: 1.0, size: 1.0, x: rx, y: ry }],
-        widthPixels: this.touchConfig.widthPixels,
-        heightPixels: this.touchConfig.heightPixels,
-        pointCount: 1,
-        properties: [{ id: 0, toolType: 1 }],
-        touchType: "gestureSwipe",
-        swipe: swipe,
-      };
-      rtc.sendUserMessage(rtc.options.clientId, JSON.stringify(wheelMsg));
+      const msg = `{"coords":[{"pressure":1,"size":1,"x":${rx},"y":${ry}}],"widthPixels":${this.touchConfig.widthPixels},"heightPixels":${this.touchConfig.heightPixels},"pointCount":1,"properties":[{"id":0,"toolType":1}],"touchType":"gestureSwipe","swipe":${swipe}}`;
+      rtc.sendUserMessage(rtc.options.clientId, msg);
     }, { passive: true });
 
     videoDom.addEventListener(eventTypeStart, (e) => {
@@ -105,16 +99,17 @@ export class TouchInputHandler {
       
       if (isMobileFlag && (e as TouchEvent).touches.length > 0) return;
       
-      this.touchConfig.action = 1;
-      rtc.sendUserMessage(rtc.options.clientId, JSON.stringify(this.touchConfig));
+      // Manual String cho sự kiện Up
+      const msg = `{"action":1,"widthPixels":${this.touchConfig.widthPixels},"heightPixels":${this.touchConfig.heightPixels},"pointCount":1,"touchType":"gesture","properties":[{"id":0,"toolType":1}],"coords":[{"x":0,"y":0,"pressure":0,"size":0}]}`;
+      rtc.sendUserMessage(rtc.options.clientId, msg);
     });
 
     videoDom.addEventListener("mouseleave", () => {
       const rtc = this.rtc;
       if (rtc.options.disable || !rtc.hasPushDown) return;
       rtc.hasPushDown = false;
-      this.touchConfig.action = 1;
-      rtc.sendUserMessage(rtc.options.clientId, JSON.stringify(this.touchConfig));
+      const msg = `{"action":1,"widthPixels":${this.touchConfig.widthPixels},"heightPixels":${this.touchConfig.heightPixels},"pointCount":1,"touchType":"gesture","properties":[{"id":0,"toolType":1}],"coords":[{"x":0,"y":0,"pressure":0,"size":0}]}`;
+      rtc.sendUserMessage(rtc.options.clientId, msg);
     });
   }
 
@@ -124,9 +119,7 @@ export class TouchInputHandler {
     const touchCount = touches.length;
     if (touchCount === 0 && action !== 1) return;
 
-    this.touchConfig.action = (action === 0 && touchCount > 1) ? 261 : action;
-    this.touchConfig.pointCount = touchCount;
-
+    const finalAction = (action === 0 && touchCount > 1) ? 261 : action;
     const rect = rtc.videoDomRect!;
     const rectLeft = rect.left;
     const rectTop = rect.top;
@@ -137,10 +130,14 @@ export class TouchInputHandler {
     const isRotated1 = rotateType === 1 && remoteRes.height > remoteRes.width;
     const isRotated0 = rotateType === 0 && remoteRes.width > remoteRes.height;
 
+    let coordsJson = "";
+    let propsJson = "";
+
     for (let i = 0; i < touchCount; i++) {
       const touch = touches[i] as any;
-      const coord = this.poolCoords[i];
+      const poolCoord = this.poolCoords[i];
       
+      // Đảm bảo tọa độ chính xác bằng clientX
       let x = touch.clientX - rectLeft;
       let y = touch.clientY - rectTop;
 
@@ -150,16 +147,20 @@ export class TouchInputHandler {
         const tx = x; x = y; y = rectWidth - tx;
       }
 
-      coord.x = x | 0;
-      coord.y = y | 0;
-      coord.orientation = action === 2 ? 0 : Number((0.01 * Math.random()).toFixed(3));
-      
-      this.touchConfig.coords[i] = coord;
-      this.touchConfig.properties[i] = this.poolProps[i];
+      // Wisebite: Bitwise OR cho tọa độ
+      const rx = x | 0;
+      const ry = y | 0;
+
+      // Khôi phục orientation biến thiên nhẹ để server nhận diện gesture chính xác
+      const orientation = action === 2 ? 0 : Number((0.01 * Math.random()).toFixed(3));
+
+      // Nối chuỗi thủ công cực nhanh
+      coordsJson += (i > 0 ? "," : "") + `{"x":${rx},"y":${ry},"pressure":${poolCoord.pressure},"size":${poolCoord.size},"touchMajor":${poolCoord.touchMajor},"touchMinor":${poolCoord.touchMinor},"toolMajor":${poolCoord.toolMajor},"toolMinor":${poolCoord.toolMinor},"orientation":${orientation}}`;
+      propsJson += (i > 0 ? "," : "") + `{"id":${i},"toolType":1}`;
     }
 
-    this.touchConfig.coords.length = touchCount;
-    this.touchConfig.properties.length = touchCount;
-    rtc.sendUserMessage(rtc.options.clientId, JSON.stringify(this.touchConfig));
+    const message = `{"action":${finalAction},"widthPixels":${this.touchConfig.widthPixels},"heightPixels":${this.touchConfig.heightPixels},"pointCount":${touchCount},"touchType":"gesture","properties":[${propsJson}],"coords":[${coordsJson}]}`;
+    
+    rtc.sendUserMessage(rtc.options.clientId, message);
   }
 }

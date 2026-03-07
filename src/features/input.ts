@@ -29,14 +29,10 @@ export const addInputElement = (rtc: RTCInstance): void => {
   });
 
   const sendInputMessage = (text: string) => {
-    // Tối ưu hóa cực đoan: Sử dụng Template Literal thay vì JSON.stringify để không tạo Object trung gian
-    // Hạn chế tuyệt đối GC pauses trong lúc người dùng gõ phím nhanh
+    // Wisebite: Manual String Building cho Input
     const escapedText = text.replace(/"/g, '\\"');
     const message = `{"action":1,"touchType":"inputBox","keyCode":1,"text":"${escapedText}"}`;
-    const userId = rtc.options.clientId;
-    
-    // Đã sửa lỗi tham số truyền ngược
-    rtc.sendUserMessage(userId, message);
+    rtc.sendUserMessage(rtc.options.clientId, message);
     if (rtc.inputElement) rtc.inputElement.value = "";
   };
 
@@ -58,7 +54,7 @@ export const addInputElement = (rtc: RTCInstance): void => {
       if (e.key === "Enter") rtc.inputElement?.blur();
       
       const userId = rtc.options.clientId;
-      // Tối ưu hóa cực đoan: Raw String Concatenation tĩnh
+      // Wisebite: Template Literals cho phím bấm
       const messageDown = `{"action":1,"touchType":"input","keyCode":${keyCode},"text":""}`;
       const messageUp = `{"action":0,"touchType":"input","keyCode":${keyCode},"text":""}`;
       
