@@ -1,10 +1,10 @@
 export const blobToText = (blob: Blob): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = (): void => {
       resolve(reader.result as string);
     };
-    reader.onerror = () => {
+    reader.onerror = (): void => {
       reject(new Error("Failed to read blob as text"));
     };
     reader.readAsText(blob);
@@ -22,7 +22,7 @@ export const arrayBufferToText = (buffer: ArrayBuffer): string => {
 
 export type DataType = "ArrayBuffer" | "Blob" | "String";
 
-export const checkType = (input: unknown): DataType => {
+export const checkType = (input: ArrayBuffer | Blob | string | number | boolean | object | null | undefined): DataType => {
   if (input instanceof ArrayBuffer) {
     return "ArrayBuffer";
   } else if (input instanceof Blob) {
@@ -40,4 +40,4 @@ export const isMobile = (): boolean => {
   return flag;
 };
 
-export const isTouchDevice = (): boolean => !!("ontouchstart" in document.documentElement);
+export const isTouchDevice = (): boolean => "ontouchstart" in document.documentElement;

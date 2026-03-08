@@ -2,7 +2,7 @@
 import type { IRTCEngine } from "../vendor/volcengine-rtc";
 import huoshanGroupRtc from "./huoshanGroupRtc";
 import { LOG_TYPE } from "../core/constants";
-import type { CustomDefinition, RTCOptions, SDKCallbacks, LogTime, RoomMessage, ReportEntry } from "../core/types";
+import type { CallbackArg, CustomDefinition, RTCOptions, SDKCallbacks, LogTime, RoomMessage, ReportEntry, RTCResult } from "../core/types";
 import type { MediaType } from "../vendor/volcengine-rtc";
 import ScreenshotOverlay from "../features/screenshot";
 import { DeviceController } from "./controllers/DeviceController";
@@ -16,16 +16,16 @@ import { VideoElement } from "../ui/videoElement";
 
 class HuoshanRTC {
   // 初始外部H5传入DomId
-  public initDomId: string = "";
+  public initDomId = "";
   // video容器id
-  public videoDomId: string = "";
+  public videoDomId = "";
   // Video element manager
   public videoElement: VideoElement;
   // 鼠标、触摸事件时是否按下
   public hasPushDown = false;
   public enableMicrophone = true;
   public enableCamera = true;
-  public screenShotInstance!: ScreenshotOverlay;
+  public screenShotInstance: ScreenshotOverlay | null = null;
   public isFirstRotate = false;
   public videoDomRect?: DOMRect;
   public videoDomWidth = 0;
@@ -127,7 +127,7 @@ class HuoshanRTC {
   setLogTime(key: string): void {
     this.logTime[key] = new Date().getTime();
   }
-  addReportInfo(info: { describe: string; error?: unknown; res?: unknown; e?: unknown; msg?: unknown; user?: unknown }): void {
+  addReportInfo(info: { describe: string; error?: CallbackArg; res?: CallbackArg; e?: CallbackArg; msg?: CallbackArg; user?: CallbackArg }): void {
     if (!this.options.isLog) return; // Tối ưu hóa cực đoan: Không cấp phát bộ nhớ nếu không bật log
     const time = new Date().getTime();
     this.errorInfo.push({
@@ -137,23 +137,23 @@ class HuoshanRTC {
       info,
     });
   }
-  setMicrophone(val: boolean) {
+  setMicrophone(val: boolean): void {
     this.enableMicrophone = val;
   }
-  setCamera(val: boolean) {
+  setCamera(val: boolean): void {
     this.enableCamera = val;
   }
-  setVideoDeviceId(val: string) {
+  setVideoDeviceId(val: string): void {
     this.videoDeviceId = val;
   }
-  setAudioDeviceId(val: string) {
+  setAudioDeviceId(val: string): void {
     this.audioDeviceId = val;
   }
   sendEventReport(operation: string): void {
     if (!this.options.isLog) {
       return;
     }
-    const request = (_type: number, _data: unknown) => {
+    const request = (_type: number, _data: CallbackArg): void => {
       // TODO: Enable when logging endpoint is ready
       // const { baseUrl } = this.options;
       // const url = baseUrl
@@ -197,7 +197,7 @@ class HuoshanRTC {
   }
 
   /** 触发无操作回收回调函数 */
-  triggerRecoveryTimeCallback() {
+  triggerRecoveryTimeCallback(): void {
     if (this.options.disable || !this.options.autoRecoveryTime) return;
 
     const now = Date.now();
@@ -210,14 +210,14 @@ class HuoshanRTC {
     }
     this.autoRecoveryTimer = setTimeout(() => {
       console.log("触发无操作回收了");
-      this.stop();
+      void this.stop();
       this.callbacks.onAutoRecoveryTime();
     }, this.options.autoRecoveryTime * 1000);
   }
 
   /** 调用 createEngine 创建一个本地 Engine 引擎对象 */
-  async createEngine() {
-      return this.connectionController.createEngine();
+  createEngine(): void {
+      this.connectionController.createEngine();
   }
 
   // 创建群控实例
@@ -226,21 +226,21 @@ class HuoshanRTC {
   }
 
   /** 手动销毁通过 createEngine 所创建的引擎对象 */
-  destroyEngine() {
+  destroyEngine(): void {
       this.connectionController.destroyEngine();
   }
 
   /**
    * 静音
    */
-  muted() {
+  muted(): void {
       this.streamController.muted();
   }
 
   /**
    * 取消静音
    */
-  unmuted() {
+  unmuted(): void {
       this.streamController.unmuted();
   }
   /** 按顺序发送文本框 */
@@ -252,14 +252,14 @@ class HuoshanRTC {
       this.inputController.sendGroupInputClipper(pads, strs);
   }
   /** 手动开启音视频流播放 */
-  startPlay() {
+  startPlay(): void {
       this.streamController.startPlay();
   }
   /** 群控房间信息 */
-  async sendGroupRoomMessage(message: string) {
-    return await this?.groupRtc?.sendRoomMessage(message);
+  async sendGroupRoomMessage(message: string): Promise<RTCResult> {
+        return await this.groupRtc?.sendRoomMessage(message);
   }
-  getMsgTemplate(touchType: string, content: object) {
+  getMsgTemplate(touchType: string, content: object): string {
     return JSON.stringify({
       touchType,
       content: JSON.stringify(content),
@@ -267,12 +267,12 @@ class HuoshanRTC {
   }
 
   /** 获取应用信息 */
-  getEquipmentInfo(type: "app" | "attr") {
+  getEquipmentInfo(type: "app" | "attr"): void {
       this.deviceController.getEquipmentInfo(type);
   }
 
   /** 应用卸载 */
-  appUnInstall(pkgNames: string[]) {
+  appUnInstall(pkgNames: string[]): void {
       this.deviceController.appUnInstall(pkgNames);
   }
 
@@ -281,7 +281,7 @@ class HuoshanRTC {
     userId: string,
     message: string,
     notSendInGroups?: boolean
-  ) {
+  ): Promise<RTCResult> {
     // Wisebite: Throttled recovery timer reset
     const now = Date.now();
     if (now - this.lastTimerResetTime > 1000) {
@@ -293,15 +293,17 @@ class HuoshanRTC {
       if (this.isGroupControl && !notSendInGroups) {
         return await this.sendGroupRoomMessage(message);
       }
-      return await this.engine?.sendUserMessage(userId, message);
-    } catch (error: unknown) {
-      this.callbacks?.onSendUserError(error);
-      return Promise.reject(error);
+      const result = await this.engine?.sendUserMessage(userId, message);
+      return typeof result === "object" && result !== null ? result : undefined;
+    } catch {
+      const sendError = new Error("Send user message failed");
+            this.callbacks.onSendUserError(sendError);
+      return Promise.reject(sendError);
     }
   }
   /** 群控退出房间 */
   public kickItOutRoom(pads: string[]): void {
-    this.sendGroupRoomMessage(
+    void this.sendGroupRoomMessage(
       JSON.stringify({
         touchType: "kickOutUser",
         content: JSON.stringify(pads),
@@ -310,14 +312,14 @@ class HuoshanRTC {
   }
   /** 群控加入房间 */
   public joinGroupRoom(pads: string[]): void {
-    const arr = pads?.filter((v: string) => v !== this.remoteUserId);
+        const arr = pads.filter((v: string) => v !== this.remoteUserId);
     if (!arr.length || !this.isGroupControl) return;
 
-    if (!this.groupRtc && this.isGroupControl) {
-      this.createGroupEngine(arr);
+        if (!this.groupRtc) {
+      void this.createGroupEngine(arr);
       return;
     }
-    this.groupRtc?.joinRoom(arr);
+    void this.groupRtc.joinRoom(arr);
   }
 
   /** 进入 RTC 房间 */
@@ -325,27 +327,27 @@ class HuoshanRTC {
       this.connectionController.start(isGroupControl, pads);
   }
   /** 远端用户离开房间 */
-  onUserLeave() {
+  onUserLeave(): void {
       this.messageController.onUserLeave();
   }
-  setViewSize(width: number, height: number, rotateType: 0 | 1 = 0) {
+  setViewSize(width: number, height: number, rotateType: 0 | 1 = 0): void {
       this.uiController.setViewSize(width, height, rotateType);
   }
-  async updateUiH5() {
+  async updateUiH5(): Promise<void> {
       return this.uiController.updateUiH5();
   }
   /** 远端可见用户加入房间 */
-  onUserJoined() {
+  onUserJoined(): void {
       this.messageController.onUserJoined();
   }
 
   /** 视频首帧渲染 */
-  onRemoteVideoFirstFrame() {
+  onRemoteVideoFirstFrame(): void {
       this.messageController.onRemoteVideoFirstFrame();
   }
 
   /** 离开 RTC 房间 */
-  async stop() {
+  async stop(): Promise<void> {
       return this.connectionController.stop();
   }
 
@@ -366,12 +368,12 @@ class HuoshanRTC {
   }
 
   /** 监听 onRoomMessageReceived 事件 */
-  onRoomMessageReceived() {
+  onRoomMessageReceived(): void {
       this.messageController.onRoomMessageReceived();
   }
 
   /** 监听 onUserMessageReceived 事件 */
-  onUserMessageReceived() {
+  onUserMessageReceived(): void {
       this.messageController.onUserMessageReceived();
   }
 
@@ -379,7 +381,7 @@ class HuoshanRTC {
    * 将字符串发送到云手机的粘贴板中
    * @param inputStr 需要发送的字符串
    */
-  async sendInputClipper(inputStr: string) {
+  async sendInputClipper(inputStr: string): Promise<void> {
       return this.inputController.sendInputClipper(inputStr);
   }
 
@@ -387,12 +389,12 @@ class HuoshanRTC {
    * 当云手机处于输入状态时，将字符串直接发送到云手机，完成输入
    * @param inputStr 需要发送的字符串
    */
-  async sendInputString(inputStr: string) {
+  async sendInputString(inputStr: string): Promise<void> {
       return this.inputController.sendInputString(inputStr);
   }
 
   /** 清晰度切换 */
-  setStreamConfig(config: CustomDefinition) {
+  setStreamConfig(config: CustomDefinition): void {
       this.streamController.setStreamConfig(config);
   }
 
@@ -401,7 +403,7 @@ class HuoshanRTC {
    * 该方法仅暂停远端流的接收，并不影响远端流的采集和发送。
    * @param mediaType 1 只控制音频; 2 只控制视频; 3 同时控制音频和视频
    */
-  pauseAllSubscribedStream(mediaType = 3) {
+  pauseAllSubscribedStream(mediaType = 3): Promise<void> | undefined {
       return this.streamController.pauseAllSubscribedStream(mediaType);
   }
 
@@ -410,45 +412,46 @@ class HuoshanRTC {
    * 该方法仅恢复远端流的接收，并不影响远端流的采集和发送。
    * @param mediaType 1 只控制音频; 2 只控制视频; 3 同时控制音频和视频
    */
-  resumeAllSubscribedStream(mediaType = 3) {
+  resumeAllSubscribedStream(mediaType = 3): Promise<void> | undefined {
       return this.streamController.resumeAllSubscribedStream(mediaType);
   }
-  async setRemoteVideoRotation(rotation: number) {
-      return this.uiController.setRemoteVideoRotation(rotation);
+  setRemoteVideoRotation(rotation: number): Promise<void> {
+      this.uiController.setRemoteVideoRotation(rotation);
+      return Promise.resolve();
   }
   /**
    * 订阅房间内指定的通过摄像头/麦克风采集的媒体流。
    */
-  async subscribeStream(mediaType: MediaType) {
+  async subscribeStream(mediaType: MediaType): Promise<void> {
       return this.streamController.subscribeStream(mediaType);
   }
   /** 旋转VIDEO 容器 1 横屏 0 竖屏 */
-  rotateContainerVideo(type: 0 | 1 = 0) {
+  rotateContainerVideo(type: 0 | 1 = 0): void {
       this.uiController.rotateContainerVideo(type);
   }
   /** 旋转截图 */
-  setScreenshotRotation(rotation = 0) {
+  setScreenshotRotation(rotation = 0): void {
       this.uiController.setScreenshotRotation(rotation);
   }
   /** 生成封面图 */
-  takeScreenshot(rotation = 0) {
+  takeScreenshot(rotation = 0): void {
       this.uiController.takeScreenshot(rotation);
   }
   /** 重新设置大小 */
-  resizeScreenshot(width: number, height: number) {
+  resizeScreenshot(width: number, height: number): void {
       this.uiController.resizeScreenshot(width, height);
   }
   /** 显示封面图 */
-  showScreenShot() {
+  showScreenShot(): void {
       this.uiController.showScreenShot();
   }
   /** 显示封面图 */
-  hideScreenShot() {
+  hideScreenShot(): void {
       this.uiController.hideScreenShot();
   }
 
   /** 清空封面图 */
-  clearScreenShot() {
+  clearScreenShot(): void {
       this.uiController.clearScreenShot();
   }
   /**
@@ -463,7 +466,7 @@ class HuoshanRTC {
   }
 
   /** 截图-保存到云机 */
-  saveScreenShotToRemote() {
+  saveScreenShotToRemote(): void {
       this.uiController.saveScreenShotToRemote();
   }
 
@@ -471,7 +474,7 @@ class HuoshanRTC {
    * 手动横竖屏：0竖屏，1横屏
    * 对标百度API
    */
-  setPhoneRotation(type: number) {
+  setPhoneRotation(type: number): void {
       this.uiController.setPhoneRotation(type);
   }
 
@@ -479,24 +482,24 @@ class HuoshanRTC {
    * 旋转屏幕
    * @param type 横竖屏：0竖屏，1横屏
    */
-  async rotateScreen(type: number) {
+  async rotateScreen(type: number): Promise<void> {
       return this.uiController.rotateScreen(type);
   }
 
   /** 手动定位 */
-  setGPS(longitude: number, latitude: number) {
+  setGPS(longitude: number, latitude: number): void {
       this.deviceController.setGPS(longitude, latitude);
   }
-  executeAdbCommand(command: string) {
+  executeAdbCommand(command: string): void {
       this.deviceController.executeAdbCommand(command);
   }
   /** 云机/本地键盘切换(false-云机键盘，true-本地键盘) */
-  setKeyboardStyle(keyBoardType: "pad" | "local") {
+  setKeyboardStyle(keyBoardType: "pad" | "local"): void {
       this.inputController.setKeyboardStyle(keyBoardType);
   }
 
   /** 查询输入状态 */
-  async onCheckInputState() {
+  async onCheckInputState(): Promise<void> {
       return this.inputController.onCheckInputState();
   }
 
@@ -504,7 +507,7 @@ class HuoshanRTC {
    * 设置无操作回收时间
    * @param second 秒 默认300s,最大7200s
    */
-  setAutoRecycleTime(second: number) {
+  setAutoRecycleTime(second: number): void {
     // 设置过期时间，单位为毫秒
     this.options.autoRecoveryTime = second;
     // 定时器，当指定时间内无操作时执行离开房间操作
@@ -512,43 +515,43 @@ class HuoshanRTC {
   }
 
   /** 获取无操作回收时间 */
-  getAutoRecycleTime() {
+  getAutoRecycleTime(): number {
     return this.options.autoRecoveryTime;
   }
 
   /** 底部栏操作按键 */
-  sendCommand(command: string) {
+  sendCommand(command: string): void {
       this.deviceController.sendCommand(command);
   }
 
   /** 返回按键事件 */
-  goAppUpPage() {
+  goAppUpPage(): void {
       this.deviceController.goAppUpPage();
   }
 
   /** 主页按键事件 */
-  goAppHome() {
+  goAppHome(): void {
       this.deviceController.goAppHome();
   }
 
   /** 菜单按键事件 */
-  goAppMenu() {
+  goAppMenu(): void {
       this.deviceController.goAppMenu();
   }
   /**  注入视频到相机 */
   injectVideoStream(
     type: "startVideoInjection" | "stopVideoInjection",
     options?: { fileUrl?: string; isLoop?: boolean; fileName?: string }
-  ) {
+  ): void {
       this.streamController.injectVideoStream(type, options);
   }
   /** 音量增加按键事件 */
-  increaseVolume() {
+  increaseVolume(): void {
       this.deviceController.increaseVolume();
   }
 
   /** 音量减少按键事件 */
-  decreaseVolume() {
+  decreaseVolume(): void {
       this.deviceController.decreaseVolume();
   }
 
@@ -556,7 +559,7 @@ class HuoshanRTC {
    * 是否接收粘贴板内容回调
    * @param flag true:接收 false:不接收
    */
-  saveCloudClipboard(flag: boolean) {
+  saveCloudClipboard(flag: boolean): void {
       this.inputController.saveCloudClipboard(flag);
   }
 
@@ -564,7 +567,7 @@ class HuoshanRTC {
     streamController!: StreamController;
     inputController!: InputController;
 
-    updateDomCache() {
+    updateDomCache(): void {
 
             const videoDom = document.getElementById(this.videoDomId);
             if (videoDom) {
@@ -582,3 +585,6 @@ class HuoshanRTC {
 }
 
 export default HuoshanRTC;
+
+
+

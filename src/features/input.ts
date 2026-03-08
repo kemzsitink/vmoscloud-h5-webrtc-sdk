@@ -15,7 +15,7 @@ export const addInputElement = (rtc: RTCInstance): void => {
   rtc.inputElement = document.createElement("input");
   rtc.inputElement.setAttribute("type", "text");
   rtc.inputElement.setAttribute("autocomplete", "off");
-  rtc.inputElement.setAttribute("id", `${rtc.masterIdPrefix || ""}_${rtc.remoteUserId}_inputEle`);
+  rtc.inputElement.setAttribute("id", `${rtc.masterIdPrefix ?? ""}_${rtc.remoteUserId}_inputEle`);
   rtc.inputElement.setAttribute("class", "play-text-input");
   rtc.inputElement.setAttribute(
     "style",
@@ -28,11 +28,11 @@ export const addInputElement = (rtc: RTCInstance): void => {
     compositionstart = true;
   });
 
-  const sendInputMessage = (text: string) => {
+  const sendInputMessage = (text: string): void => {
     // Wisebite: Manual String Building cho Input
     const escapedText = text.replace(/"/g, '\\"');
     const message = `{"action":1,"touchType":"inputBox","keyCode":1,"text":"${escapedText}"}`;
-    rtc.sendUserMessage(rtc.options.clientId, message);
+    void rtc.sendUserMessage(rtc.options.clientId, message);
     if (rtc.inputElement) rtc.inputElement.value = "";
   };
 
@@ -55,11 +55,11 @@ export const addInputElement = (rtc: RTCInstance): void => {
       
       const userId = rtc.options.clientId;
       // Wisebite: Template Literals cho phím bấm
-      const messageDown = `{"action":1,"touchType":"input","keyCode":${keyCode},"text":""}`;
-      const messageUp = `{"action":0,"touchType":"input","keyCode":${keyCode},"text":""}`;
+      const messageDown = `{"action":1,"touchType":"input","keyCode":"${String(keyCode)}","text":""}`;
+      const messageUp = `{"action":0,"touchType":"input","keyCode":"${String(keyCode)}","text":""}`;
       
-      rtc.sendUserMessage(userId, messageDown);
-      rtc.sendUserMessage(userId, messageUp);
+      void rtc.sendUserMessage(userId, messageDown);
+      void rtc.sendUserMessage(userId, messageUp);
     }
   });
 

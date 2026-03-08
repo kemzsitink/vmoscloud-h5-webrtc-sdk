@@ -5,12 +5,30 @@ interface GroupEngineOptions {
     roomCode: string
     roomToken: string
     userId: string
-    resolve: (value: { engine: IRTCEngine; result: unknown }) => void
-    reject: (reason?: unknown) => void
+    resolve: (value: { engine: IRTCEngine; result: object | undefined }) => void
+    reject: (reason?: Error) => void
 }
 
 interface UserInfo {
     userId?: string
+}
+
+interface ShareTokenPayload {
+    appId: string
+    roomCode: string
+    roomToken: string
+}
+
+interface ShareTokenResponse {
+    data: ShareTokenPayload
+}
+
+interface JoinRoomResponse {
+    data: ShareTokenResponse
+}
+
+interface GroupUserMessage {
+    key?: string
 }
 
 class huoshanGroupRtc {
@@ -26,27 +44,28 @@ class huoshanGroupRtc {
         this.callbacks = callbacks
     }
 
-    // 关闭 WebSocket 连接
     close(): void {
-        this.abortControllers?.forEach((v: AbortController) => {
+        this.abortControllers.forEach((v: AbortController) => {
             v.abort()
         })
         this.abortControllers = []
     }
 
-    joinRoom(pads: string[]): Promise<unknown> {
-        const controller = new AbortController() // 创建一个取消令牌
+    async joinRoom(pads: string[]): Promise<JoinRoomResponse> {
+        const controller = new AbortController()
         this.abortControllers.push(controller)
-        return new Promise<unknown>((resolve, reject) => {
-            const { baseUrl } = this.params
 
-            const base = baseUrl
-                ? `${baseUrl}/rtc/open/room/sdk/share/applyToken`
-                : `https://openapi.armcloud.net/rtc/open/room/sdk/share/applyToken`
-            const { userId, uuid, token, manageToken } = this.params
-            const url = manageToken ? '/manage/rtc/room/share/applyToken' : base
-            const tok = manageToken || token
-            fetch(url, {
+        const { baseUrl } = this.params
+        const base = baseUrl
+            ? `${baseUrl}/rtc/open/room/sdk/share/applyToken`
+            : `https://openapi.armcloud.net/rtc/open/room/sdk/share/applyToken`
+
+        const { userId, uuid, token, manageToken } = this.params
+        const url = manageToken ? '/manage/rtc/room/share/applyToken' : base
+        const tok = manageToken || token
+
+        try {
+            const response = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -58,13 +77,13 @@ class huoshanGroupRtc {
                     terminal: 'h5',
                     expire: 360000,
                     pushPublicStream: false,
-                    pads: pads?.map((v: string) => {
+                    pads: pads.map((v: string) => {
                         return {
                             padCode: v,
                             videoStream: {
-                                resolution: 7, // 分辨率
-                                frameRate: 5, // 帧率
-                                bitrate: 13, // 码率
+                                resolution: 7,
+                                frameRate: 5,
+                                bitrate: 13,
                             },
                             userId,
                         }
@@ -72,29 +91,25 @@ class huoshanGroupRtc {
                 }),
                 signal: controller.signal,
             })
-                .then((response) => response.json())
-                .then((data) => {
-                    resolve({ data })
-                })
-                .catch((error: Error) => {
-                    if (error.name === 'AbortError') {
-                        return
-                    }
-                    reject(error)
-                })
-        })
+            const data = (await response.json()) as ShareTokenResponse
+            return { data }
+        } catch (error) {
+            if (error instanceof Error) {
+                throw error
+            }
+            throw new Error('Join group room failed')
+        }
     }
 
-    async getEngine(): Promise<{ engine: IRTCEngine; result: unknown }> {
-        return new Promise<{ engine: IRTCEngine; result: unknown }>((resolve, reject) => {
+    async getEngine(): Promise<{ engine: IRTCEngine; result: object | undefined }> {
+        return new Promise<{ engine: IRTCEngine; result: object | undefined }>((resolve, reject) => {
             this.joinRoom(this.pads)
-                .then((res: unknown) => {
+                .then((res: JoinRoomResponse) => {
                     const { userId } = this.params
-                    const resData = res as { data: { data: { appId: string; roomCode: string; roomToken: string } } }
-                    const { appId, roomCode, roomToken } = resData?.data?.data || {}
+                    const { appId, roomCode, roomToken } = res.data.data
                     this.engine = VERTC.createEngine(appId)
 
-                    this.createEngine({
+                    void this.createEngine({
                         roomCode,
                         roomToken,
                         userId,
@@ -102,7 +117,7 @@ class huoshanGroupRtc {
                         reject,
                     })
                 })
-                .catch((_err: unknown) => {
+                .catch(() => {
                     const error = new Error('Get Token Error') as Error & { code: string }
                     error.code = 'TOKEN_ERR'
                     reject(error)
@@ -110,12 +125,14 @@ class huoshanGroupRtc {
         })
     }
 
-    async sendUserMessage(userId: string, message?: string): Promise<unknown> {
-        return await this?.engine?.sendUserMessage(userId, message ?? '')
+    async sendUserMessage(userId: string, message?: string): Promise<object | undefined> {
+        const result = await this.engine?.sendUserMessage(userId, message ?? '')
+        return typeof result === 'object' && result !== null ? result : undefined
     }
 
-    async sendRoomMessage(message: string): Promise<unknown> {
-        return await this?.engine?.sendRoomMessage(message)
+    async sendRoomMessage(message: string): Promise<object | undefined> {
+        const result = (await this.engine?.sendRoomMessage(message)) as object | undefined
+        return typeof result === 'object' ? result : undefined
     }
 
     getMsgTemplate(touchType: string, content: object): string {
@@ -125,43 +142,39 @@ class huoshanGroupRtc {
         })
     }
 
-    /** 远端可见用户加入房间 */
     onUserJoined(): void {
-        this?.engine?.on(VERTC.events.onUserJoined, (user: { userInfo?: UserInfo }) => {
+        this.engine?.on(VERTC.events.onUserJoined, (user: { userInfo?: UserInfo }) => {
             this.callbacks.onUserLeaveOrJoin({
                 type: 'join',
-                userInfo: user?.userInfo,
+                userInfo: user.userInfo,
             })
         })
     }
 
-    /** 监听 onUserMessageReceived 事件 */
     onUserMessageReceived(): void {
-        const onUserMessageReceived = (e: { userId: string; message: string }) => {
-            if (e.message) {
-                const msg = JSON.parse(e.message)
-                if (msg.key === 'userjoin') {
-                    this.sendRoomMessage(
-                        this.getMsgTemplate('openGroupControl', {
-                            pads: this.pads,
-                        })
-                    )
-                    this.sendUserMessage(
-                        e.userId,
-                        this.getMsgTemplate('openGroupControl', { isOpen: true })
-                    )
-                }
+        const onUserMessageReceived = (e: { userId: string; message: string }): void => {
+            if (!e.message) return
+            const msg = JSON.parse(e.message) as GroupUserMessage
+            if (msg.key === 'userjoin') {
+                void this.sendRoomMessage(
+                    this.getMsgTemplate('openGroupControl', {
+                        pads: this.pads,
+                    })
+                )
+                void this.sendUserMessage(
+                    e.userId,
+                    this.getMsgTemplate('openGroupControl', { isOpen: true })
+                )
             }
         }
         this.engine?.on(VERTC.events.onUserMessageReceived, onUserMessageReceived)
     }
 
-    /** 远端可见用户加离开房间 */
     onUserLeave(): void {
-        this?.engine?.on(VERTC.events.onUserLeave, (user: { userInfo?: UserInfo }) => {
+        this.engine?.on(VERTC.events.onUserLeave, (user: { userInfo?: UserInfo }) => {
             this.callbacks.onUserLeaveOrJoin({
                 type: 'leave',
-                userInfo: user?.userInfo,
+                userInfo: user.userInfo,
             })
         })
     }
@@ -184,18 +197,23 @@ class huoshanGroupRtc {
             this.onUserJoined()
             this.onUserLeave()
             this.onUserMessageReceived()
-            this.sendRoomMessage(
+            void this.sendRoomMessage(
                 this.getMsgTemplate('openGroupControl', {
                     pads: this.pads,
                 })
             )
 
+            if (!this.engine) {
+                reject(new Error('Group engine not initialized'))
+                return
+            }
+
             resolve({
-                engine: this.engine!,
-                result: res,
+                engine: this.engine,
+                result: typeof res === 'object' ? res : undefined,
             })
         } catch (error) {
-            reject(error)
+            reject(error instanceof Error ? error : new Error('Create group engine failed'))
         }
     }
 }

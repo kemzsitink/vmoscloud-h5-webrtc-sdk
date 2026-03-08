@@ -5,7 +5,7 @@ import { StreamIndex } from "../../vendor/volcengine-rtc";
 export class UIController {
   constructor(private rtc: HuoshanRTC) {}
 
-  setViewSize(width: number, height: number, rotateType: 0 | 1 = 0) {
+  setViewSize(width: number, height: number, rotateType: 0 | 1 = 0): void {
     const rtc = this.rtc;
     const h5Dom = document.getElementById(rtc.initDomId);
     const videoDom = document.getElementById(rtc.videoDomId);
@@ -13,28 +13,28 @@ export class UIController {
     if (h5Dom && videoDom) {
       const w = width | 0;
       const h = height | 0;
-      h5Dom.style.width = w + "px";
-      h5Dom.style.height = h + "px";
+      h5Dom.style.width = `${String(w)}px`;
+      h5Dom.style.height = `${String(h)}px`;
 
       if (rotateType === 1) {
-        videoDom.style.width = h + "px";
-        videoDom.style.height = w + "px";
+        videoDom.style.width = `${String(h)}px`;
+        videoDom.style.height = `${String(w)}px`;
       } else {
-        videoDom.style.width = w + "px";
-        videoDom.style.height = h + "px";
+        videoDom.style.width = `${String(w)}px`;
+        videoDom.style.height = `${String(h)}px`;
       }
     }
   }
 
-  rotateContainerVideo(type: 0 | 1 = 0) {
+  rotateContainerVideo(type: 0 | 1 = 0): void {
     const rtc = this.rtc;
-    const player = document.querySelector(`#${rtc.videoDomId} div`) as HTMLElement | null;
+    const player = document.querySelector<HTMLElement>(`#${rtc.videoDomId} div`);
     if (player) {
       if (type === 1) {
         const cw = player.clientWidth;
         const ch = player.clientHeight;
-        const translateY = ((cw - ch) / 2 / ch) * 100; 
-        player.style.transform = `translateY(${translateY}%) rotate(-90deg)`;
+        const translateY = ((cw - ch) / 2 / ch) * 100;
+        player.style.transform = `translateY(${String(translateY)}%) rotate(-90deg)`;
       } else {
         player.style.transform = "";
       }
@@ -43,27 +43,28 @@ export class UIController {
     }
   }
 
-  setScreenshotRotation(rotation = 0) {
-    this.rtc.screenShotInstance?.setScreenshotrotateType(rotation as 0 | 1);
+  setScreenshotRotation(rotation = 0): void {
+    if (rotation !== 0 && rotation !== 1) return;
+    this.rtc.screenShotInstance?.setScreenshotrotateType(rotation);
   }
 
-  takeScreenshot(rotation = 0) {
+  takeScreenshot(rotation = 0): void {
     this.rtc.screenShotInstance?.takeScreenshot(rotation);
   }
 
-  resizeScreenshot(width: number, height: number) {
+  resizeScreenshot(width: number, height: number): void {
     this.rtc.screenShotInstance?.resizeScreenshot(width | 0, height | 0);
   }
 
-  showScreenShot() {
+  showScreenShot(): void {
     this.rtc.screenShotInstance?.showScreenShot();
   }
 
-  hideScreenShot() {
+  hideScreenShot(): void {
     this.rtc.screenShotInstance?.hideScreenShot();
   }
 
-  clearScreenShot() {
+  clearScreenShot(): void {
     this.rtc.screenShotInstance?.clearScreenShot();
   }
 
@@ -72,17 +73,17 @@ export class UIController {
     return this.rtc.engine ? this.rtc.engine.takeRemoteSnapshot(userId, 0) : Promise.resolve(undefined);
   }
 
-  saveScreenShotToRemote() {
+  saveScreenShotToRemote(): void {
     const msg = '{"touchType":"eventSdk","content":"{\\"type\\":\\"localScreenshot\\"}"}';
-    this.rtc.sendUserMessage(this.rtc.options.clientId, msg);
+    void this.rtc.sendUserMessage(this.rtc.options.clientId, msg);
   }
 
-  setPhoneRotation(type: number) {
+  setPhoneRotation(type: number): void {
     this.rtc.triggerRecoveryTimeCallback();
-    this.rtc.rotateScreen(type);
+    void this.rtc.rotateScreen(type);
   }
 
-  async rotateScreen(type: number) {
+  async rotateScreen(type: number): Promise<void> {
     const rtc = this.rtc;
     const h5Dom = document.getElementById(rtc.initDomId);
     if (!h5Dom) return;
@@ -104,13 +105,14 @@ export class UIController {
       parentHeight = bigSide;
     }
 
-    h5Dom.style.width = (parentWidth | 0) + "px";
-    h5Dom.style.height = (parentHeight | 0) + "px";
+    h5Dom.style.width = `${String(parentWidth | 0)}px`;
+    h5Dom.style.height = `${String(parentHeight | 0)}px`;
 
     const remoteRes = rtc.remoteResolution;
     const videoIsLandscape = remoteRes.width > remoteRes.height;
 
-    let w: number, h: number;
+    let w: number;
+    let h: number;
     let videoWrapperRotate = 0;
 
     if (type === 1) {
@@ -130,8 +132,8 @@ export class UIController {
     rtc.rotation = videoWrapperRotate;
     const videoDom = document.getElementById(rtc.videoDomId);
     if (videoDom) {
-      videoDom.style.width = armcloudVideoWidth + "px";
-      videoDom.style.height = armcloudVideoHeight + "px";
+      videoDom.style.width = `${String(armcloudVideoWidth)}px`;
+      videoDom.style.height = `${String(armcloudVideoHeight)}px`;
     }
 
     await this.rtc.setRemoteVideoRotation(videoWrapperRotate);
@@ -142,29 +144,31 @@ export class UIController {
     });
   }
 
-  async setRemoteVideoRotation(rotation: number) {
+  setRemoteVideoRotation(rotation: number): void {
     const rtc = this.rtc;
     const videoDom = document.getElementById(rtc.videoDomId);
     if (videoDom && rtc.engine) {
-      await rtc.engine.setRemoteVideoPlayer(StreamIndex.STREAM_INDEX_MAIN, {
+      rtc.engine.setRemoteVideoPlayer(StreamIndex.STREAM_INDEX_MAIN, {
         userId: rtc.options.clientId,
         renderDom: videoDom,
-        renderMode: 1, // RenderMode 1: Hidden (Aspect Fill) - Đảm bảo không méo hình
+        renderMode: 1,
         rotation,
       });
     }
   }
 
-  async updateUiH5() {
+  async updateUiH5(): Promise<void> {
     try {
       const msg = '{"touchType":"eventSdk","content":"{\\"type\\":\\"updateUiH5\\"}"}';
       await this.rtc.sendUserMessage(this.rtc.options.clientId, msg);
     } catch {
-      setTimeout(() => this.updateUiH5(), 1000);
+      setTimeout(() => {
+        void this.updateUiH5();
+      }, 1000);
     }
   }
 
-  public async initRotateScreen(width: number, height: number) {
+  public async initRotateScreen(width: number, height: number): Promise<void> {
     const rtc = this.rtc;
     if (isTouchDevice() || isMobile()) rtc.options.rotateType = 0;
 
@@ -175,10 +179,11 @@ export class UIController {
     rtc.remoteResolution.width = width | 0;
     rtc.remoteResolution.height = height | 0;
 
-    let targetRotateType = (rotateType === 0 || rotateType === 1) 
-      ? rotateType 
+    const targetRotateType = (rotateType === 0 || rotateType === 1)
+      ? rotateType
       : (width > height ? 1 : 0);
 
     await this.rotateScreen(targetRotateType);
   }
 }
+

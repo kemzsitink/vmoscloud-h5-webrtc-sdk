@@ -52,6 +52,10 @@ export interface PositionOption {
     time?: number | null;
 }
 
+export type CallbackArg = string | number | boolean | null | undefined | object;
+export type RTCResult = undefined | string | number | boolean | null | object;
+export type RTCRecord = Record<string, CallbackArg>;
+
 // ========== SDK Interfaces ==========
 
 /** Video stream config */
@@ -162,44 +166,44 @@ export interface LogTime {
 
 /** SDK callback functions */
 export interface SDKCallbacks {
-    onInit: (...args: unknown[]) => void;
-    onConnectSuccess: (...args: unknown[]) => void;
-    onConnectFail: (...args: unknown[]) => void;
-    onConnectionStateChanged: (...args: unknown[]) => void;
-    onAutoplayFailed: (...args: unknown[]) => void;
-    onRunInformation: (...args: unknown[]) => void;
-    onNetworkQuality: (...args: unknown[]) => void;
-    onAutoRecoveryTime: (...args: unknown[]) => void;
-    onErrorMessage: (...args: unknown[]) => void;
-    onUserLeave: (...args: unknown[]) => void;
-    onSendUserError: (...args: unknown[]) => void;
-    onGroupControlError: (...args: unknown[]) => void;
-    onChangeResolution: (...args: unknown[]) => void;
-    onChangeRotate: (...args: unknown[]) => void;
-    onTransparentMsg: (...args: unknown[]) => void;
-    onOutputClipper: (...args: unknown[]) => void;
-    onRenderedFirstFrame: (...args: unknown[]) => void;
-    onVideoInit: (...args: unknown[]) => void;
-    onVideoError: (...args: unknown[]) => void;
-    onAudioInit: (...args: unknown[]) => void;
-    onAudioError: (...args: unknown[]) => void;
-    onProgress: (...args: unknown[]) => void;
-    onSocketCallback: (...args: unknown[]) => void;
-    onUserLeaveOrJoin: (...args: unknown[]) => void;
-    onEquipmentInfo: (...args: unknown[]) => void;
-    onAdbOutput: (...args: unknown[]) => void;
-    onInjectVideoResult: (...args: unknown[]) => void;
-    onMessage: (...args: unknown[]) => void;
-    onRotationChanged: (...args: unknown[]) => void;
-    onRemoteVideoSizeChanged: (...args: unknown[]) => void;
-    onFirstFrame: (...args: unknown[]) => void;
-    [key: string]: ((...args: unknown[]) => void) | undefined;
+    onInit: (...args: CallbackArg[]) => void;
+    onConnectSuccess: (...args: CallbackArg[]) => void;
+    onConnectFail: (...args: CallbackArg[]) => void;
+    onConnectionStateChanged: (...args: CallbackArg[]) => void;
+    onAutoplayFailed: (...args: CallbackArg[]) => void;
+    onRunInformation: (...args: CallbackArg[]) => void;
+    onNetworkQuality: (...args: CallbackArg[]) => void;
+    onAutoRecoveryTime: (...args: CallbackArg[]) => void;
+    onErrorMessage: (...args: CallbackArg[]) => void;
+    onUserLeave: (...args: CallbackArg[]) => void;
+    onSendUserError: (...args: CallbackArg[]) => void;
+    onGroupControlError: (...args: CallbackArg[]) => void;
+    onChangeResolution: (...args: CallbackArg[]) => void;
+    onChangeRotate: (...args: CallbackArg[]) => void;
+    onTransparentMsg: (...args: CallbackArg[]) => void;
+    onOutputClipper: (...args: CallbackArg[]) => void;
+    onRenderedFirstFrame: (...args: CallbackArg[]) => void;
+    onVideoInit: (...args: CallbackArg[]) => void;
+    onVideoError: (...args: CallbackArg[]) => void;
+    onAudioInit: (...args: CallbackArg[]) => void;
+    onAudioError: (...args: CallbackArg[]) => void;
+    onProgress: (...args: CallbackArg[]) => void;
+    onSocketCallback: (...args: CallbackArg[]) => void;
+    onUserLeaveOrJoin: (...args: CallbackArg[]) => void;
+    onEquipmentInfo: (...args: CallbackArg[]) => void;
+    onAdbOutput: (...args: CallbackArg[]) => void;
+    onInjectVideoResult: (...args: CallbackArg[]) => void;
+    onMessage: (...args: CallbackArg[]) => void;
+    onRotationChanged: (...args: CallbackArg[]) => void;
+    onRemoteVideoSizeChanged: (...args: CallbackArg[]) => void;
+    onFirstFrame: (...args: CallbackArg[]) => void;
+    [key: string]: ((...args: CallbackArg[]) => void) | undefined;
 }
 
 /** Room message data */
 export interface RoomMessage {
     inputStateIsOpen?: boolean;
-    [key: string]: unknown;
+    [key: string]: CallbackArg;
 }
 
 /** Report error info entry */
@@ -207,7 +211,7 @@ export interface ReportEntry {
     type: string;
     time: number;
     timeDiff: number;
-    info: { describe: string; error?: unknown; res?: unknown };
+    info: { describe: string; error?: CallbackArg; res?: CallbackArg };
 }
 
 /** Interface for RTC instance consumed by textInput */
@@ -218,5 +222,5 @@ export interface RTCInstance {
     remoteUserId: string;
     roomMessage: RoomMessage;
     masterIdPrefix?: string;
-    sendUserMessage: (userId: string, message: string, notSendInGroups?: boolean) => Promise<unknown>;
+    sendUserMessage: (userId: string, message: string, notSendInGroups?: boolean) => Promise<RTCResult>;
 }

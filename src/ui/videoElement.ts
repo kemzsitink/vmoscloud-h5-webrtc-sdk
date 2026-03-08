@@ -90,7 +90,7 @@ export class VideoElement {
   public bindDomEvent(type: string, listener: EventListener): void {
     const target = this.mainElement ?? document.getElementById(this.videoDomId);
     if (target) {
-      const wrappedListener = (event: Event) => {
+      const wrappedListener = (event: Event): void => {
         if (type !== "wheel" && type !== "touchstart" && type !== "touchmove") {
           event.preventDefault();
         }

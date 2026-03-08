@@ -8,15 +8,28 @@ interface VideoInjectionOptions {
   fileName?: string;
 }
 
+interface ApplyTokenData {
+  streamType: number;
+  appId: string;
+  roomCode: string;
+  roomToken: string;
+}
+
+interface ApplyTokenResponse {
+  code: number;
+  msg?: string;
+  data: ApplyTokenData;
+}
+
 class ArmcloudEngine {
   // SDK版本号
   version = "1.3.0";
   // rtc实例
   rtcInstance: HuoshanRTC | null = null;
   // rtc初始化参数
-  rtcOptions: RTCOptions;
+  rtcOptions!: RTCOptions;
   // rtc回调
-  callbacks: SDKCallbacks;
+  callbacks!: SDKCallbacks;
   streamType: number | null = null;
   private abortController: AbortController | null = null;
 
@@ -43,6 +56,15 @@ class ArmcloudEngine {
     videoTrack: null,
   };
 
+  private parseWsProxy(value?: string): boolean {
+    if (!value) return false;
+    try {
+      return JSON.parse(value) === true;
+    } catch {
+      return false;
+    }
+  }
+
   constructor(params: SDKInitParams) {
     this.abortController = new AbortController(); // 创建一个取消令牌
     // 初始化入参
@@ -64,15 +86,15 @@ class ArmcloudEngine {
       enableMicrophone: params.enableMicrophone ?? true,
       enableCamera: params.enableCamera ?? true,
       baseUrl: params.baseUrl,
-      isWsProxy: params.isWsProxy ? JSON.parse(params.isWsProxy) : false,
+      isWsProxy: this.parseWsProxy(params.isWsProxy),
       manageToken: params.manageToken ?? "",
       masterIdPrefix: params.masterIdPrefix ?? "",
       uuid: "",
       // 视频流信息
       videoStream: {
-        resolution: params?.deviceInfo?.videoStream?.resolution ?? 12, // 分辨率
-        frameRate: params?.deviceInfo?.videoStream?.frameRate ?? 2, // 帧率
-        bitrate: params?.deviceInfo?.videoStream?.bitrate ?? 3, // 码率
+        resolution: params.deviceInfo.videoStream?.resolution ?? 12, // 分辨率
+        frameRate: params.deviceInfo.videoStream?.frameRate ?? 2, // 帧率
+        bitrate: params.deviceInfo.videoStream?.bitrate ?? 3, // 码率
       },
       allowLocalIMEInCloud: params.deviceInfo.allowLocalIMEInCloud ?? false, // 云机键盘时能否使用本地输入法
       autoRecoveryTime: params.deviceInfo.autoRecoveryTime ?? 300, // 自动回收时间
@@ -87,82 +109,82 @@ class ArmcloudEngine {
       latencyTarget: params.latencyTarget ?? 0, // 延时目标 (0ms for absolute minimum latency)
     };
 
+    const noop = (): void => undefined;
     this.callbacks = {
       // 初始化回调
-      onInit: params.callbacks.onInit || (() => { }),
+      onInit: params.callbacks.onInit ?? noop,
       // 连接成功回调
-      onConnectSuccess: params.callbacks.onConnectSuccess || (() => { }),
+      onConnectSuccess: params.callbacks.onConnectSuccess ?? noop,
       // 连接失败回调
-      onConnectFail: params.callbacks.onConnectFail || (() => { }),
+      onConnectFail: params.callbacks.onConnectFail ?? noop,
       // 触发自动回收回调
-      onAutoRecoveryTime: params.callbacks.onAutoRecoveryTime || (() => { }),
+      onAutoRecoveryTime: params.callbacks.onAutoRecoveryTime ?? noop,
       // 自动播放失败回调
-      onAutoplayFailed: params.callbacks.onAutoplayFailed || (() => { }),
+      onAutoplayFailed: params.callbacks.onAutoplayFailed ?? noop,
       // 运行信息回调
-      onRunInformation: params.callbacks.onRunInformation || (() => { }),
+      onRunInformation: params.callbacks.onRunInformation ?? noop,
       // 分辨率切换回调
-      onChangeResolution: params.callbacks.onChangeResolution || (() => { }),
+      onChangeResolution: params.callbacks.onChangeResolution ?? noop,
       // 横竖屏切换回调：0 竖屏 1 横屏
-      onChangeRotate: params.callbacks?.onChangeRotate || (() => { }),
+      onChangeRotate: params.callbacks.onChangeRotate ?? noop,
       // 消息透传回调
-      onTransparentMsg: params.callbacks.onTransparentMsg || (() => { }),
+      onTransparentMsg: params.callbacks.onTransparentMsg ?? noop,
       // 连接状态回调
       onConnectionStateChanged:
-        params.callbacks.onConnectionStateChanged || (() => { }),
+        params.callbacks.onConnectionStateChanged ?? noop,
       // 错误回调
-      onErrorMessage: params.callbacks.onErrorMessage || (() => { }),
+      onErrorMessage: params.callbacks.onErrorMessage ?? noop,
       // 剪切板回调
-      onOutputClipper: params.callbacks.onOutputClipper || (() => { }),
+      onOutputClipper: params.callbacks.onOutputClipper ?? noop,
       // 首帧画面已加载
-      onRenderedFirstFrame: params.callbacks.onRenderedFirstFrame || (() => { }),
+      onRenderedFirstFrame: params.callbacks.onRenderedFirstFrame ?? noop,
       // 视频采集成功
-      onVideoInit: params.callbacks?.onVideoInit || (() => { }),
+      onVideoInit: params.callbacks.onVideoInit ?? noop,
       // 视频采集失败
-      onVideoError: params.callbacks?.onVideoError || (() => { }),
+      onVideoError: params.callbacks.onVideoError ?? noop,
       // 音频采集成功
-      onAudioInit: params.callbacks?.onAudioInit || (() => { }),
+      onAudioInit: params.callbacks.onAudioInit ?? noop,
       // 音频采集失败
-      onAudioError: params.callbacks?.onAudioError || (() => { }),
+      onAudioError: params.callbacks.onAudioError ?? noop,
       // 加载进度相关回调
-      onProgress: params.callbacks?.onProgress || (() => { }),
+      onProgress: params.callbacks.onProgress ?? noop,
       // onSocketCallback websocket相关回调
-      onSocketCallback: params.callbacks?.onSocketCallback || (() => { }),
+      onSocketCallback: params.callbacks.onSocketCallback ?? noop,
       // 用户离开
-      onUserLeave: params.callbacks?.onUserLeave || (() => { }),
+      onUserLeave: params.callbacks.onUserLeave ?? noop,
       // 用户进退出
-      onUserLeaveOrJoin: params.callbacks?.onUserLeaveOrJoin || (() => { }),
+      onUserLeaveOrJoin: params.callbacks.onUserLeaveOrJoin ?? noop,
       // 群控错误相关回调
-      onGroupControlError: params.callbacks?.onGroupControlError || (() => { }),
+      onGroupControlError: params.callbacks.onGroupControlError ?? noop,
       // 云机信息回调
-      onEquipmentInfo: params.callbacks?.onEquipmentInfo || (() => { }),
+      onEquipmentInfo: params.callbacks.onEquipmentInfo ?? noop,
       // 发送用户错误
-      onSendUserError: params.callbacks?.onSendUserError || (() => { }),
+      onSendUserError: params.callbacks.onSendUserError ?? noop,
       // 执行adb命令后结果回调
-      onAdbOutput: params.callbacks?.onAdbOutput || (() => { }),
+      onAdbOutput: params.callbacks.onAdbOutput ?? noop,
       // 收到本端上行及下行的网络质量信息。
-      onNetworkQuality: params.callbacks?.onNetworkQuality || (() => { }),
+      onNetworkQuality: params.callbacks.onNetworkQuality ?? noop,
       // 视频注入结果
-      onInjectVideoResult: params.callbacks?.onInjectVideoResult || (() => { }),
+      onInjectVideoResult: params.callbacks.onInjectVideoResult ?? noop,
       // 消息回调
-      onMessage: params.callbacks?.onMessage || (() => { }),
+      onMessage: params.callbacks.onMessage ?? noop,
       // 旋转变化回调
-      onRotationChanged: params.callbacks?.onRotationChanged || (() => { }),
+      onRotationChanged: params.callbacks.onRotationChanged ?? noop,
       // 远端视频尺寸变化回调
-      onRemoteVideoSizeChanged: params.callbacks?.onRemoteVideoSizeChanged || (() => { }),
+      onRemoteVideoSizeChanged: params.callbacks.onRemoteVideoSizeChanged ?? noop,
       // 首帧回调
-      onFirstFrame: params.callbacks?.onFirstFrame || (() => { }),
+      onFirstFrame: params.callbacks.onFirstFrame ?? noop,
     };
     // 初始化回调
     if (
       params.token &&
-      params.deviceInfo &&
       params.deviceInfo.padCode &&
       params.deviceInfo.userId
     ) {
-      const uuid = localStorage.getItem("armcloud_uuid") || this.generateUUID();
+      const uuid = localStorage.getItem("armcloud_uuid") ?? this.generateUUID();
       localStorage.setItem("armcloud_uuid", uuid || "");
 
-      const url = params?.baseUrl
+      const url = params.baseUrl
         ? `${params.baseUrl}/rtc/open/room/applyToken`
         : `https://openapi.armcloud.net/rtc/open/room/applyToken`;
       // 换取火山rtc相关信息
@@ -175,28 +197,25 @@ class ArmcloudEngine {
         videoStream: this.rtcOptions.videoStream,
       };
       this.logTime.tokenResStart = new Date().getTime();
-      fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          token: this.rtcOptions.token,
-        },
-        body: JSON.stringify(tokenParams),
-        signal: this.abortController.signal, // 将取消令牌添加到请求配置中
-      })
-        .then((response) => response.json())
-        .then((data) => {
+      void (async (): Promise<void> => {
+        try {
+          const response = await fetch(url, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              token: this.rtcOptions.token,
+            },
+            body: JSON.stringify(tokenParams),
+            signal: this.abortController ? this.abortController.signal : null,
+          });
+          const data = (await response.json()) as ApplyTokenResponse;
           if (data.code === 200) {
             this.logTime.tokenResEnd = new Date().getTime();
             this.streamType = data.data.streamType;
-
-            // Always use Volcengine RTC
             this.rtcOptions.uuid = uuid;
             this.rtcOptions.appId = data.data.appId;
             this.rtcOptions.roomCode = data.data.roomCode;
             this.rtcOptions.roomToken = data.data.roomToken;
-
-            // 创建引擎对象 — Volcengine RTC only
             this.rtcInstance = new HuoshanRTC(
               params.viewId,
               this.rtcOptions,
@@ -208,24 +227,25 @@ class ArmcloudEngine {
               msg: "初始化成功",
               streamType: this.streamType,
             });
-          } else {
-            this.callbacks.onInit({
-              code: data?.code || COMMON_CODE.FAIL,
-              msg: data?.msg,
-              streamType: this.streamType,
-            });
-          }
-        })
-        .catch((error: Error) => {
-          if (error.name === "AbortError") {
             return;
           }
+          this.callbacks.onInit({
+            code: data.code || COMMON_CODE.FAIL,
+            msg: data.msg,
+            streamType: this.streamType,
+          });
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            return;
+          }
+          const message = error instanceof Error ? (error.message || error.name) : "Initialize failed";
           console.error("获取初始化配置失败:", error);
           this.callbacks.onInit({
             code: COMMON_CODE.FAIL,
-            msg: error.message || error.name,
+            msg: message,
           });
-        });
+        }
+      })();
     } else {
       this.callbacks.onInit({
         code: COMMON_CODE.FAIL,
@@ -295,7 +315,7 @@ class ArmcloudEngine {
   async stop(): Promise<void> {
     this.abortController?.abort();
     this.abortController = null;
-    return this?.rtcInstance?.stop();
+    await this.rtcInstance?.stop();
   }
 
   /** 静音 */
@@ -330,7 +350,7 @@ class ArmcloudEngine {
 
   /** 将字符串发送到云手机的粘贴板中 */
   sendInputClipper(inputStr: string): void {
-    if (this.rtcInstance) this.rtcInstance.sendInputClipper(inputStr);
+    if (this.rtcInstance) void this.rtcInstance.sendInputClipper(inputStr);
   }
 
   /** 将字符串 分别发到云机的剪切板中 */
@@ -345,7 +365,7 @@ class ArmcloudEngine {
 
   /** 当云手机处于输入状态时，将字符串直接发送到云手机，完成输入 */
   sendInputString(inputStr: string): void {
-    if (this.rtcInstance) this.rtcInstance.sendInputString(inputStr);
+    if (this.rtcInstance) void this.rtcInstance.sendInputString(inputStr);
   }
 
   /** 清晰度切换 */
@@ -360,7 +380,7 @@ class ArmcloudEngine {
    */
   pauseAllSubscribedStream(mediaType = 3): void {
     if (this.rtcInstance)
-      this.rtcInstance.pauseAllSubscribedStream(mediaType);
+      void this.rtcInstance.pauseAllSubscribedStream(mediaType);
   }
 
   /**
@@ -370,7 +390,7 @@ class ArmcloudEngine {
    */
   resumeAllSubscribedStream(mediaType = 3): void {
     if (this.rtcInstance)
-      this.rtcInstance.resumeAllSubscribedStream(mediaType);
+      void this.rtcInstance.resumeAllSubscribedStream(mediaType);
   }
 
   /** 订阅房间内指定的通过摄像头/麦克风采集的媒体流 */
@@ -401,7 +421,7 @@ class ArmcloudEngine {
     if (this.rtcInstance) {
       return await this.rtcInstance.saveScreenShotToLocal();
     }
-    return Promise.reject("RTC instance does not exist");
+    return Promise.reject(new Error("RTC instance does not exist"));
   }
 
   /** 截图-保存到云机 */
@@ -456,7 +476,7 @@ class ArmcloudEngine {
 
   /** 执行adb命令 */
   executeAdbCommand(command: string): void {
-    if (this.rtcInstance) this.rtcInstance?.executeAdbCommand(command);
+    if (this.rtcInstance) this.rtcInstance.executeAdbCommand(command);
   }
 
   /** 云机/本地键盘切换(false-云机键盘，true-本地键盘) */
@@ -517,3 +537,4 @@ class ArmcloudEngine {
 }
 
 export default ArmcloudEngine;
+

@@ -27,9 +27,9 @@ export const handleError = (error: Error | null | undefined): ErrorInfo | Record
   if (!error) return {};
 
   return {
-    name: error?.name || "",
-    message: error?.message || "",
-    stack: error?.stack || "",
+    name: error.name,
+    message: error.message,
+    stack: error.stack ?? "",
     time: new Date().getTime(),
   };
 };

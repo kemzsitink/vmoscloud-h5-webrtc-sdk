@@ -5,19 +5,19 @@ import type { CustomDefinition } from "../../core/types";
 export class StreamController {
   constructor(private rtc: HuoshanRTC) {}
 
-  muted() {
-    this.rtc.engine?.unsubscribeStream(this.rtc.options.clientId, 1 as MediaType); // MediaType.AUDIO
+  muted(): void {
+    void this.rtc.engine?.unsubscribeStream(this.rtc.options.clientId, 1 as MediaType); // MediaType.AUDIO
   }
 
-  unmuted() {
-    this.rtc.engine?.subscribeStream(this.rtc.options.clientId, 1 as MediaType); // MediaType.AUDIO
+  unmuted(): void {
+    void this.rtc.engine?.subscribeStream(this.rtc.options.clientId, 1 as MediaType); // MediaType.AUDIO
   }
 
-  startPlay() {
-    if (this.rtc.engine) this.rtc.engine.play(this.rtc.options.clientId);
+  startPlay(): void {
+    if (this.rtc.engine) void this.rtc.engine.play(this.rtc.options.clientId);
   }
 
-  async subscribeStream(mediaType: MediaType) {
+  async subscribeStream(mediaType: MediaType): Promise<void> {
     return await this.rtc.engine?.subscribeStream(this.rtc.options.clientId, mediaType);
   }
 
@@ -27,17 +27,17 @@ export class StreamController {
       : Promise.resolve();
   }
 
-  pauseAllSubscribedStream(mediaType = 3) {
+  pauseAllSubscribedStream(mediaType = 3): Promise<void> | undefined {
     this.rtc.triggerRecoveryTimeCallback();
     const contentObj = { type: "openAudioAndVideo", isOpen: false };
     const messageObj = { touchType: "eventSdk", content: JSON.stringify(contentObj) };
     const userId = this.rtc.options.clientId;
     const message = JSON.stringify(messageObj);
-    this.rtc.engine?.sendUserMessage(userId, message);
+    void this.rtc.engine?.sendUserMessage(userId, message);
     return this.rtc.engine?.pauseAllSubscribedStream(mediaType);
   }
 
-  resumeAllSubscribedStream(mediaType = 3) {
+  resumeAllSubscribedStream(mediaType = 3): Promise<void> | undefined {
     this.rtc.triggerRecoveryTimeCallback();
     this.rtc.startPlay();
     if (mediaType !== 3) {
@@ -47,11 +47,11 @@ export class StreamController {
     const messageObj = { touchType: "eventSdk", content: JSON.stringify(contentObj) };
     const userId = this.rtc.options.clientId;
     const message = JSON.stringify(messageObj);
-    this.rtc.sendUserMessage(userId, message);
+    void this.rtc.sendUserMessage(userId, message);
     return this.rtc.engine?.resumeAllSubscribedStream(mediaType);
   }
 
-  setStreamConfig(config: CustomDefinition) {
+  setStreamConfig(config: CustomDefinition): void {
     const regExp = /^[1-9]\d*$/;
     if (config.definitionId && config.framerateId && config.bitrateId) {
       const values = Object.values(config);
@@ -68,7 +68,7 @@ export class StreamController {
         };
         const userId = this.rtc.options.clientId;
         const message = JSON.stringify(messageObj);
-        this.rtc.sendUserMessage(userId, message, true);
+        void this.rtc.sendUserMessage(userId, message, true);
       }
     }
   }
@@ -76,7 +76,7 @@ export class StreamController {
   injectVideoStream(
     type: "startVideoInjection" | "stopVideoInjection",
     options?: { fileUrl?: string; isLoop?: boolean; fileName?: string }
-  ) {
+  ): void {
     const userId = this.rtc.options.clientId;
     if (!userId) return;
     const message = JSON.stringify({
@@ -95,6 +95,6 @@ export class StreamController {
       ),
     });
     console.log("注入视频到相机", message);
-    this.rtc.sendUserMessage(userId, message);
+    void this.rtc.sendUserMessage(userId, message);
   }
 }
