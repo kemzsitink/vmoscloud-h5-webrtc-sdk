@@ -1,104 +1,90 @@
-# ArmCloud H5 WebRTC SDK (by VMOSCloud)
+# vmoscloud-h5-webrtc-sdk
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue.svg)](https://www.typescriptlang.org/)
+A customized WebRTC SDK for VMOSCloud/ArmCloud browser clients.
 
-A professional WebRTC-based SDK for interacting with **ArmCloud Phone** and **Cloud App** streaming services. Developed by **ArmCloud** (a subsidiary of **VMOSCloud**), this SDK enables developers to build low-latency clients with full remote control capabilities.
+This repository contains a refactored TypeScript version focused on:
 
----
+- stricter typing in app-level code
+- cleaner controller separation
+- safer lifecycle behavior (`start/stop/destroy`)
+- better compatibility with modern React/Vue usage patterns
 
-## 🚀 Key Features
+## Installation
 
-- **🎮 Remote Control**: High-precision touch events, gestures, and keyboard mapping (Home, Back, Menu).
-- **📡 Optimized WebRTC**: Fully integrated with ByteDance's **Volcengine (Huoshan RTC)** infrastructure for ultra-low latency and high stability.
-- **🌍 Virtual Sensors**:
-  - **GPS Simulation**: Set custom longitude and latitude.
-  - **Device Orientation**: Rotate the remote screen (Portrait/Landscape).
-  - **Shake Simulation**: Trigger "shake to refresh" or other motion-based features.
-- **🛠 System Integration**:
-  - **ADB Support**: Execute ADB commands directly from the browser.
-  - **Clipboard**: Synchronize text between local and remote devices.
-  - **Media**: Microphone and Camera stream injection.
-- **📸 Screen Capture**: Take high-quality screenshots and save them locally or to a remote server.
-- **👥 Group Control**: Advanced logic to manage multiple cloud instances simultaneously.
-
----
-
-## 📦 Getting Started
-
-### Prerequisites
-- [Node.js](https://nodejs.org/) (v16+)
-- `npm` or `pnpm`
-
-### Installation & Build
-
-1. Clone the repository and install dependencies:
 ```bash
-npm install
+npm install vmoscloud-h5-webrtc-sdk
 ```
 
-2. Build the production bundles (CommonJS, ESM, and Global):
+Local workspace usage:
+
 ```bash
+npm install ../vmoscloud-h5-webrtc-sdk
+```
+
+## Quick Example
+
+```ts
+import { ArmcloudEngine } from "vmoscloud-h5-webrtc-sdk";
+
+const sdk = new ArmcloudEngine({
+  baseUrl: "https://openapi-hk.armcloud.net",
+  token: "YOUR_STS_TOKEN",
+  viewId: "phoneBox",
+  deviceInfo: {
+    padCode: "YOUR_PAD_CODE",
+    userId: `web_${Date.now()}`,
+    mediaType: 3,
+    rotateType: 0,
+    keyboard: "pad",
+    saveCloudClipboard: true,
+    videoStream: {
+      resolution: 15,
+      frameRate: 4,
+      bitrate: 7,
+    },
+  },
+  callbacks: {
+    onInit: async ({ code }) => {
+      if (code !== 0) return;
+      const supported = await sdk.isSupported();
+      if (!supported) return;
+      sdk.start();
+    },
+    onConnectSuccess: () => console.log("connected"),
+    onConnectFail: ({ code, msg }) => console.error(code, msg),
+  },
+});
+
+// Later
+// await sdk.stop();
+```
+
+## Documentation
+
+- [Docs index](./docs/README.md)
+- [Quick Start](./docs/01-quick-start.md)
+- [Configuration](./docs/02-configuration.md)
+- [Callbacks](./docs/03-callbacks.md)
+- [API Reference](./docs/04-api-reference.md)
+- Examples:
+  - [HTML](./docs/examples/html.md)
+  - [React](./docs/examples/react.md)
+  - [Vue 3](./docs/examples/vue3.md)
+- [Troubleshooting](./docs/05-troubleshooting.md)
+
+## Scripts
+
+```bash
+npm run lint
 npm run build
 ```
 
-The output will be generated in the `dist/` directory:
-- `dist/index.cjs.js`: Node.js/CommonJS bundle.
-- `dist/index.es.js`: Modern bundler (React/Vue/Vite) bundle.
-- `dist/index.global.js`: Browser direct include (Global: `ArmcloudRtc`).
+## Notes
 
----
+- Browser runtime is required (`window`/`document`).
+- Use backend-issued short-lived STS tokens in production.
+- Always call `stop()` on page/component teardown.
 
-## 💻 Usage Example
+## License
 
-```typescript
-import { ArmcloudEngine, KEYTYPE } from 'vmoscloud-h5-webrtc-sdk';
-
-const engine = new ArmcloudEngine({
-  container: document.getElementById('vmos-container'),
-  token: 'YOUR_ACCESS_TOKEN',
-  onMessage: (data) => console.log('Cloud Data:', data),
-  onConnect: () => console.log('Connected to Cloud Phone!'),
-});
-
-// Initialize the engine
-engine.init();
-
-// Simulate Home button click
-engine.sendKeypad(KEYTYPE.EYHOMEPAGE);
-
-// Set GPS Location (New York)
-engine.setGPS(-74.006, 40.7128);
-
-// Take a screenshot
-engine.saveScreenShotToLocal();
-```
-
----
-
-## 🏗 Project Structure
-
-- `src/lib/pkg.ts`: Core `ArmcloudEngine` class.
-- `src/lib/huoshanRtc.ts`: Volcengine RTC implementation.
-- `src/lib/huoshanGroupRtc.ts`: Group control logic using Volcengine RTC.
-- `src/lib/enums.ts`: Action types and key constants.
-- `src/lib/utils.ts`: Internal helper functions.
-
----
-
-## 🔗 Resources
-
-- **Official Documentation**: [VMOS Cloud H5 Example](https://cloud.vmoscloud.com/vmoscloud/doc/en/client/h5/example.html#sample-code)
-- **Technology Stack**: WebRTC, TypeScript, Rollup, Axios, @volcengine/rtc.
-
----
-
-## ⚖ Disclaimer
-
-This project is a reverse-engineered/recovered version of the VMOS Cloud H5 SDK, extracted from source maps for educational and research purposes. All original intellectual property and trademarks belong to **VMOS Cloud**. Use this SDK in compliance with their terms of service.
-
----
-
-## 📄 License
-
-This project is licensed under the [MIT License](LICENSE).
+MIT (see [LICENSE](./LICENSE)).

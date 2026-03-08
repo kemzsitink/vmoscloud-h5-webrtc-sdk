@@ -30,6 +30,7 @@ class HuoshanRTC {
   public videoDomRect?: DOMRect;
   public videoDomWidth = 0;
   public videoDomHeight = 0;
+  public resizeObserver: ResizeObserver | null = null;
   private lastTimerResetTime = 0;
   public remoteResolution = {
     width: 0,
@@ -50,6 +51,7 @@ class HuoshanRTC {
   public errorInfo: ReportEntry[] = [];
 
   public isFirstFrame = false;
+  public isStarted = false;
 
   public firstFrameCount = 0;
   public rotation = 0;

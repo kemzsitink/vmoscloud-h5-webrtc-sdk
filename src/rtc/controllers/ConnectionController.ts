@@ -140,11 +140,27 @@ export class ConnectionController {
   }
 
   destroyEngine(): void {
-    if (this.rtc.engine) VERTC.destroyEngine(this.rtc.engine);
-    if (this.rtc.groupEngine) VERTC.destroyEngine(this.rtc.groupEngine);
+    this.rtc.resizeObserver?.disconnect();
+    this.rtc.resizeObserver = null;
+    this.rtc.touchInputHandler.unbindEvents();
+    this.rtc.hasPushDown = false;
+    this.rtc.isStarted = false;
+
+    if (this.rtc.engine) {
+      this.rtc.engine.removeAllListeners();
+      VERTC.destroyEngine(this.rtc.engine);
+      this.rtc.engine = undefined;
+    }
+    if (this.rtc.groupEngine) {
+      this.rtc.groupEngine.removeAllListeners();
+      VERTC.destroyEngine(this.rtc.groupEngine);
+      this.rtc.groupEngine = undefined;
+    }
   }
 
   start(isGroupControl = false, pads: string[] = []): void {
+    if (this.rtc.engine === undefined || this.rtc.isStarted) return;
+
     this.rtc.isGroupControl = isGroupControl;
     this.rtc.addReportInfo({ describe: "开始加入房间" });
     const config = {
@@ -178,10 +194,11 @@ export class ConnectionController {
           videoDom.style.height = "100%";
 
           this.rtc.updateDomCache();
-          const resizeObserver = new ResizeObserver(() => {
+          this.rtc.resizeObserver?.disconnect();
+          this.rtc.resizeObserver = new ResizeObserver(() => {
             this.rtc.updateDomCache();
           });
-          resizeObserver.observe(videoDom);
+          this.rtc.resizeObserver.observe(videoDom);
 
           this.rtc.touchInputHandler.bindEvents(videoDom);
           this.rtc.onRoomMessageReceived();
@@ -191,6 +208,7 @@ export class ConnectionController {
           this.rtc.onRemoteVideoFirstFrame();
           this.rtc.onUserPublishStream();
 
+          this.rtc.isStarted = true;
           this.rtc.callbacks.onConnectSuccess();
         }
 
@@ -198,6 +216,7 @@ export class ConnectionController {
           this.rtc.callbacks.onConnectionStateChanged(event);
         });
       } catch (error) {
+        this.rtc.isStarted = false;
         const err = error instanceof Error ? error : new Error("Join room failed");
         this.rtc.addReportInfo({ describe: "加入房间失败", error: err });
         this.rtc.sendEventReport("error");
@@ -210,6 +229,7 @@ export class ConnectionController {
   async stop(): Promise<void> {
     try {
       clearTimeout(this.rtc.autoRecoveryTimer ?? undefined);
+      this.rtc.autoRecoveryTimer = null;
       const { clientId, mediaType } = this.rtc.options;
       const promises: Promise<void>[] = [
         Promise.resolve(this.rtc.engine?.unsubscribeStream(clientId, mediaType)).then(() => undefined),
@@ -221,20 +241,20 @@ export class ConnectionController {
 
       await Promise.allSettled(promises);
       this.rtc.destroyEngine();
+      this.rtc.resizeObserver?.disconnect();
+      this.rtc.resizeObserver = null;
 
       this.rtc.groupRtc?.close();
       this.rtc.screenShotInstance?.destroy();
-
-      const videoDomElement = document.getElementById(this.rtc.videoDomId);
-      if (videoDomElement?.parentNode) {
-        videoDomElement.parentNode.removeChild(videoDomElement);
-      }
+      this.rtc.videoElement.destroy();
+      this.rtc.touchInputHandler.unbindEvents();
 
       this.rtc.inputElement?.remove();
       this.rtc.sendEventReport("error");
-      this.rtc.groupEngine = undefined;
       this.rtc.groupRtc = undefined;
       this.rtc.screenShotInstance = null;
+      this.rtc.hasPushDown = false;
+      this.rtc.isStarted = false;
     } catch (error) {
       const err = error instanceof Error ? error : new Error("Stop connection failed");
       return Promise.reject(err);

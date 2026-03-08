@@ -175,14 +175,28 @@ class ArmcloudEngine {
       // 首帧回调
       onFirstFrame: params.callbacks.onFirstFrame ?? noop,
     };
+
+    const isBrowserRuntime = typeof window !== "undefined" && typeof document !== "undefined";
+    if (!isBrowserRuntime) {
+      this.callbacks.onInit({
+        code: COMMON_CODE.FAIL,
+        msg: "ArmcloudEngine requires a browser runtime (window/document).",
+      });
+      return;
+    }
     // 初始化回调
     if (
       params.token &&
       params.deviceInfo.padCode &&
       params.deviceInfo.userId
     ) {
-      const uuid = localStorage.getItem("armcloud_uuid") ?? this.generateUUID();
-      localStorage.setItem("armcloud_uuid", uuid || "");
+      const canUseStorage = typeof localStorage !== "undefined";
+      const uuid = canUseStorage
+        ? (localStorage.getItem("armcloud_uuid") ?? this.generateUUID())
+        : this.generateUUID();
+      if (canUseStorage) {
+        localStorage.setItem("armcloud_uuid", uuid || "");
+      }
 
       const url = params.baseUrl
         ? `${params.baseUrl}/rtc/open/room/applyToken`
@@ -537,4 +551,7 @@ class ArmcloudEngine {
 }
 
 export default ArmcloudEngine;
+
+
+
 

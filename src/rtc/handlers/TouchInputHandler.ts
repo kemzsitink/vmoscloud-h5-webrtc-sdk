@@ -17,6 +17,13 @@ interface TouchPointPayload {
 }
 
 export class TouchInputHandler {
+  private boundElement: HTMLElement | null = null;
+  private domListeners: {
+    type: string;
+    listener: EventListener;
+    options: AddEventListenerOptions | boolean | undefined;
+  }[] = [];
+
   private touchConfig: TouchConfig = {
     action: 0,
     widthPixels: 0,
@@ -63,43 +70,53 @@ export class TouchInputHandler {
   }
 
   public bindEvents(videoDom: HTMLElement): void {
+    this.unbindEvents();
+    this.boundElement = videoDom;
+
     const isMobileFlag = isTouchDevice() || isMobile();
     const eventTypeStart = isMobileFlag ? "touchstart" : "mousedown";
     const eventTypeMove = isMobileFlag ? "touchmove" : "mousemove";
     const eventTypeEnd = isMobileFlag ? "touchend" : "mouseup";
+    const addListener = (
+      type: string,
+      listener: EventListener,
+      options?: AddEventListenerOptions | boolean
+    ): void => {
+      videoDom.addEventListener(type, listener, options);
+      this.domListeners.push({ type, listener, options });
+    };
 
     if (this.rtc.options.disableContextMenu) {
-      videoDom.addEventListener("contextmenu", (e) => {
+      const onContextMenu = (e: Event): void => {
         e.preventDefault();
-      });
+      };
+      addListener("contextmenu", onContextMenu);
     }
 
-    videoDom.addEventListener(
-      "wheel",
-      (e) => {
-        const rtc = this.rtc;
-        if (rtc.options.disable || !rtc.videoDomRect) return;
+    const onWheel = (e: Event): void => {
+      const wheelEvent = e as WheelEvent;
+      const rtc = this.rtc;
+      if (rtc.options.disable || !rtc.videoDomRect) return;
 
-        const swipe = e.deltaY > 0 ? -1 : 1;
-        const rx = (e.clientX - rtc.videoDomRect.left) | 0;
-        const ry = (e.clientY - rtc.videoDomRect.top) | 0;
+      const swipe = wheelEvent.deltaY > 0 ? -1 : 1;
+      const rx = (wheelEvent.clientX - rtc.videoDomRect.left) | 0;
+      const ry = (wheelEvent.clientY - rtc.videoDomRect.top) | 0;
 
-        const msg = JSON.stringify({
-          coords: [{ pressure: 1, size: 1, x: rx, y: ry }],
-          widthPixels: this.touchConfig.widthPixels,
-          heightPixels: this.touchConfig.heightPixels,
-          pointCount: 1,
-          properties: [{ id: 0, toolType: 1 }],
-          touchType: "gestureSwipe",
-          swipe,
-        });
+      const msg = JSON.stringify({
+        coords: [{ pressure: 1, size: 1, x: rx, y: ry }],
+        widthPixels: this.touchConfig.widthPixels,
+        heightPixels: this.touchConfig.heightPixels,
+        pointCount: 1,
+        properties: [{ id: 0, toolType: 1 }],
+        touchType: "gestureSwipe",
+        swipe,
+      });
 
-        void rtc.sendUserMessage(rtc.options.clientId, msg);
-      },
-      { passive: true }
-    );
+      void rtc.sendUserMessage(rtc.options.clientId, msg);
+    };
+    addListener("wheel", onWheel, { passive: true });
 
-    videoDom.addEventListener(eventTypeStart, (e) => {
+    const onStart = (e: Event): void => {
       const rtc = this.rtc;
       if (rtc.options.disable) return;
       if (!isMobileFlag) e.preventDefault();
@@ -114,19 +131,17 @@ export class TouchInputHandler {
       }
 
       this.processEvent(e, 0, isMobileFlag);
-    });
+    };
+    addListener(eventTypeStart, onStart);
 
-    videoDom.addEventListener(
-      eventTypeMove,
-      (e) => {
-        if (this.rtc.options.disable || !this.rtc.hasPushDown) return;
-        if (e.cancelable) e.preventDefault();
-        this.processEvent(e, 2, isMobileFlag);
-      },
-      { passive: false }
-    );
+    const onMove = (e: Event): void => {
+      if (this.rtc.options.disable || !this.rtc.hasPushDown) return;
+      if (e.cancelable) e.preventDefault();
+      this.processEvent(e, 2, isMobileFlag);
+    };
+    addListener(eventTypeMove, onMove, { passive: false });
 
-    videoDom.addEventListener(eventTypeEnd, (e) => {
+    const onEnd = (e: Event): void => {
       const rtc = this.rtc;
       if (rtc.options.disable) return;
       rtc.hasPushDown = false;
@@ -138,14 +153,25 @@ export class TouchInputHandler {
       } else {
         this.processEvent(e, 1, isMobileFlag);
       }
-    });
+    };
+    addListener(eventTypeEnd, onEnd);
 
-    videoDom.addEventListener("mouseleave", () => {
+    const onMouseLeave = (): void => {
       const rtc = this.rtc;
       if (rtc.options.disable || !rtc.hasPushDown) return;
       rtc.hasPushDown = false;
       this.processEvent(null, 1, isMobileFlag);
-    });
+    };
+    addListener("mouseleave", onMouseLeave);
+  }
+
+  public unbindEvents(): void {
+    if (!this.boundElement) return;
+    for (const { type, listener, options } of this.domListeners) {
+      this.boundElement.removeEventListener(type, listener, options);
+    }
+    this.domListeners = [];
+    this.boundElement = null;
   }
 
   private processEvent(e: Event | null, action: number, isMobileFlag: boolean): void {

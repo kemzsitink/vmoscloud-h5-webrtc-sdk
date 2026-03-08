@@ -56,6 +56,51 @@ export type CallbackArg = string | number | boolean | null | undefined | object;
 export type RTCResult = undefined | string | number | boolean | null | object;
 export type RTCRecord = Record<string, CallbackArg>;
 
+export interface SDKInitResult {
+    code: number;
+    msg?: string | undefined;
+    streamType?: number | null | undefined;
+}
+
+export interface SDKConnectFailResult {
+    code?: number | undefined;
+    msg: string;
+}
+
+export interface SDKGroupControlError {
+    code?: string | undefined;
+    msg: string;
+}
+
+export interface SDKChangeRotateSize {
+    width: number;
+    height: number;
+}
+
+export interface SDKResolution {
+    width: number;
+    height: number;
+}
+
+export interface SDKChangeResolutionResult {
+    from: SDKResolution;
+    to: SDKResolution;
+}
+
+export interface SDKUserLeaveOrJoinResult {
+    type: "join" | "leave";
+    userInfo?: object | undefined;
+}
+
+export interface SDKRunInformation {
+    latencyInfo?: {
+        rtt?: number;
+        e2eDelay?: number;
+        jitterBufferDelay?: number;
+    };
+    [key: string]: CallbackArg;
+}
+
 // ========== SDK Interfaces ==========
 
 /** Video stream config */
@@ -166,38 +211,37 @@ export interface LogTime {
 
 /** SDK callback functions */
 export interface SDKCallbacks {
-    onInit: (...args: CallbackArg[]) => void;
-    onConnectSuccess: (...args: CallbackArg[]) => void;
-    onConnectFail: (...args: CallbackArg[]) => void;
-    onConnectionStateChanged: (...args: CallbackArg[]) => void;
-    onAutoplayFailed: (...args: CallbackArg[]) => void;
-    onRunInformation: (...args: CallbackArg[]) => void;
-    onNetworkQuality: (...args: CallbackArg[]) => void;
-    onAutoRecoveryTime: (...args: CallbackArg[]) => void;
-    onErrorMessage: (...args: CallbackArg[]) => void;
-    onUserLeave: (...args: CallbackArg[]) => void;
-    onSendUserError: (...args: CallbackArg[]) => void;
-    onGroupControlError: (...args: CallbackArg[]) => void;
-    onChangeResolution: (...args: CallbackArg[]) => void;
-    onChangeRotate: (...args: CallbackArg[]) => void;
-    onTransparentMsg: (...args: CallbackArg[]) => void;
-    onOutputClipper: (...args: CallbackArg[]) => void;
-    onRenderedFirstFrame: (...args: CallbackArg[]) => void;
-    onVideoInit: (...args: CallbackArg[]) => void;
-    onVideoError: (...args: CallbackArg[]) => void;
-    onAudioInit: (...args: CallbackArg[]) => void;
-    onAudioError: (...args: CallbackArg[]) => void;
-    onProgress: (...args: CallbackArg[]) => void;
-    onSocketCallback: (...args: CallbackArg[]) => void;
-    onUserLeaveOrJoin: (...args: CallbackArg[]) => void;
-    onEquipmentInfo: (...args: CallbackArg[]) => void;
-    onAdbOutput: (...args: CallbackArg[]) => void;
-    onInjectVideoResult: (...args: CallbackArg[]) => void;
-    onMessage: (...args: CallbackArg[]) => void;
-    onRotationChanged: (...args: CallbackArg[]) => void;
-    onRemoteVideoSizeChanged: (...args: CallbackArg[]) => void;
-    onFirstFrame: (...args: CallbackArg[]) => void;
-    [key: string]: ((...args: CallbackArg[]) => void) | undefined;
+    onInit: (result: SDKInitResult) => void;
+    onConnectSuccess: () => void;
+    onConnectFail: (result: SDKConnectFailResult) => void;
+    onConnectionStateChanged: (event: object) => void;
+    onAutoplayFailed: (event: object) => void;
+    onRunInformation: (info: SDKRunInformation) => void;
+    onNetworkQuality: (uplinkNetworkQuality: number, downlinkNetworkQuality: number) => void;
+    onAutoRecoveryTime: () => void;
+    onErrorMessage: (error: CallbackArg) => void;
+    onUserLeave: (result: object) => void;
+    onSendUserError: (error: Error) => void;
+    onGroupControlError: (result: SDKGroupControlError) => void;
+    onChangeResolution: (result: SDKChangeResolutionResult) => void;
+    onChangeRotate: (type: number, size: SDKChangeRotateSize) => void;
+    onTransparentMsg: (msgType: number, data: string) => void;
+    onOutputClipper: (data: object) => void;
+    onRenderedFirstFrame: () => void;
+    onVideoInit: (result: object) => void;
+    onVideoError: (error: Error) => void;
+    onAudioInit: (result: object) => void;
+    onAudioError: (error: Error) => void;
+    onProgress: (data: CallbackArg) => void;
+    onSocketCallback: (data: CallbackArg) => void;
+    onUserLeaveOrJoin: (result: SDKUserLeaveOrJoinResult) => void;
+    onEquipmentInfo: (data: object[]) => void;
+    onAdbOutput: (data: object) => void;
+    onInjectVideoResult: (type: string, result: object) => void;
+    onMessage: (data: CallbackArg) => void;
+    onRotationChanged: (data: CallbackArg) => void;
+    onRemoteVideoSizeChanged: (data: CallbackArg) => void;
+    onFirstFrame: (data: CallbackArg) => void;
 }
 
 /** Room message data */
