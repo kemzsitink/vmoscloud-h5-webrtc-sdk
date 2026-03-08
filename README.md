@@ -66,6 +66,11 @@ const sdk = new ArmcloudEngine({
 - [Configuration](./docs/02-configuration.md)
 - [Callbacks](./docs/03-callbacks.md)
 - [API Reference](./docs/04-api-reference.md)
+- [Apply Token API](./docs/06-apply-token.md)
+- [Architecture](./docs/07-architecture.md)
+- [Source Walkthrough](./docs/08-source-walkthrough.md)
+- [Message Protocol](./docs/09-message-protocol.md)
+- [Maintenance Checklist](./docs/10-maintenance-checklist.md)
 - Examples:
   - [HTML](./docs/examples/html.md)
   - [React](./docs/examples/react.md)
