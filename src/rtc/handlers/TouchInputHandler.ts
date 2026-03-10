@@ -38,6 +38,9 @@ export class TouchInputHandler {
   private poolProps: { id: number; toolType: number }[] = [];
   private lastCoords: TouchPointPayload[] = [];
   private lastProps: { id: number; toolType: number }[] = [];
+  private pendingEvent: { e: Event | null; action: number; isMobileFlag: boolean } | null = null;
+  private rafId: number | null = null;
+  private lastMoveSignature = "";
 
   constructor(private rtc: HuoshanRTC) {
     for (let i = 0; i < 10; i++) {
@@ -67,6 +70,30 @@ export class TouchInputHandler {
 
     this.touchConfig.widthPixels = w | 0;
     this.touchConfig.heightPixels = h | 0;
+  }
+
+  private flushPending(): void {
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+    if (this.pendingEvent) {
+      const pending = this.pendingEvent;
+      this.pendingEvent = null;
+      this.processEvent(pending.e, pending.action, pending.isMobileFlag);
+    }
+  }
+
+  private scheduleProcessEvent(e: Event, action: number, isMobileFlag: boolean): void {
+    this.pendingEvent = { e, action, isMobileFlag };
+    if (this.rafId !== null) return;
+    this.rafId = requestAnimationFrame(() => {
+      this.rafId = null;
+      if (!this.pendingEvent) return;
+      const pending = this.pendingEvent;
+      this.pendingEvent = null;
+      this.processEvent(pending.e, pending.action, pending.isMobileFlag);
+    });
   }
 
   public bindEvents(videoDom: HTMLElement): void {
@@ -123,6 +150,7 @@ export class TouchInputHandler {
 
       rtc.hasPushDown = true;
       this.syncDimensions();
+      this.flushPending();
 
       const opts = rtc.options;
       if (rtc.inputElement && ((opts.allowLocalIMEInCloud && opts.keyboard === "pad") || opts.keyboard === "local")) {
@@ -137,7 +165,7 @@ export class TouchInputHandler {
     const onMove = (e: Event): void => {
       if (this.rtc.options.disable || !this.rtc.hasPushDown) return;
       if (e.cancelable) e.preventDefault();
-      this.processEvent(e, 2, isMobileFlag);
+      this.scheduleProcessEvent(e, 2, isMobileFlag);
     };
     addListener(eventTypeMove, onMove, { passive: false });
 
@@ -145,6 +173,7 @@ export class TouchInputHandler {
       const rtc = this.rtc;
       if (rtc.options.disable) return;
       rtc.hasPushDown = false;
+      this.flushPending();
 
       if (isMobileFlag) {
         if ((e as TouchEvent).touches.length === 0) {
@@ -160,6 +189,7 @@ export class TouchInputHandler {
       const rtc = this.rtc;
       if (rtc.options.disable || !rtc.hasPushDown) return;
       rtc.hasPushDown = false;
+      this.flushPending();
       this.processEvent(null, 1, isMobileFlag);
     };
     addListener("mouseleave", onMouseLeave);
@@ -260,6 +290,14 @@ export class TouchInputHandler {
       properties: props,
       coords,
     });
+
+    if (action === 2) {
+      const signature =
+        `${this.touchConfig.pointCount}|` +
+        coords.map((coord) => `${coord.x},${coord.y}`).join(";");
+      if (signature === this.lastMoveSignature) return;
+      this.lastMoveSignature = signature;
+    }
 
     void rtc.sendUserMessage(rtc.options.clientId, message);
   }
