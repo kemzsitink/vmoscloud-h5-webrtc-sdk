@@ -23,7 +23,7 @@ interface ApplyTokenResponse {
 
 class ArmcloudEngine {
   // SDK版本号
-  version = "1.3.0";
+  version = "CUSTOM";
   // rtc实例
   rtcInstance: HuoshanRTC | null = null;
   // rtc初始化参数

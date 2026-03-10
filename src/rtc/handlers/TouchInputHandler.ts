@@ -50,7 +50,7 @@ export class TouchInputHandler {
   }
 
   private syncDimensions(): void {
-    if (!this.rtc.videoDomRect) this.rtc.updateDomCache();
+    this.rtc.updateDomCache(true);
     const rtc = this.rtc;
     const { videoDomWidth, videoDomHeight, rotateType, remoteResolution } = rtc;
 

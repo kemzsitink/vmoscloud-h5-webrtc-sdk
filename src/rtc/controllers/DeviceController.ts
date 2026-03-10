@@ -2,6 +2,9 @@ import type HuoshanRTC from "../huoshanRtc";
 import Shake from "../../features/shake";
 
 export class DeviceController {
+  private shake: Shake | null = null;
+  private sensorPrefix = "";
+  private sensorSuffix = "";
   constructor(private rtc: HuoshanRTC) {}
 
   getEquipmentInfo(type: "app" | "attr"): void {
@@ -19,13 +22,20 @@ export class DeviceController {
   sendShakeInfo(time: number): void {
     const rtc = this.rtc;
     const userId = rtc.options.clientId;
-    const shake = new Shake();
-    
-    shake.startShakeSimulation(time, (content: { x: number; y: number; z: number }) => {
+    if (!this.shake) {
+      this.shake = new Shake();
+    }
+    if (!this.sensorPrefix) {
+      this.sensorPrefix =
+        '{"coords":[],"heightPixels":0,"isOpenScreenFollowRotation":false,"keyCode":0,"pointCount":0,"properties":[],"text":"","touchType":"eventSdk","widthPixels":0,"action":0,"content":"';
+      this.sensorSuffix = '"}';
+    }
+
+    this.shake.startShakeSimulation(time, (content: { x: number; y: number; z: number }) => {
       // Wisebite: Nối chuỗi cực nhanh cho dữ liệu sensor (tần suất cực cao)
       const buildSensorMsg = (sensorType: string): string => {
-        const innerContent = `{\\"x\\":${String(content.x)},\\"y\\":${String(content.y)},\\"z\\":${String(content.z)},\\"type\\":\\"sdkSensor\\",\\"sensorType\\":\\"${sensorType}\\"}`;
-        return `{"coords":[],"heightPixels":0,"isOpenScreenFollowRotation":false,"keyCode":0,"pointCount":0,"properties":[],"text":"","touchType":"eventSdk","widthPixels":0,"action":0,"content":"${innerContent}"}`;
+        const innerContent = `{\\"x\\":${content.x},\\"y\\":${content.y},\\"z\\":${content.z},\\"type\\":\\"sdkSensor\\",\\"sensorType\\":\\"${sensorType}\\"}`;
+        return this.sensorPrefix + innerContent + this.sensorSuffix;
       };
       
       void rtc.sendUserMessage(userId, buildSensorMsg("gyroscope"));

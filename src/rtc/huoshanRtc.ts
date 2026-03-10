@@ -31,6 +31,8 @@ class HuoshanRTC {
   public videoDomWidth = 0;
   public videoDomHeight = 0;
   public resizeObserver: ResizeObserver | null = null;
+  private videoDomElement: HTMLElement | null = null;
+  private domCacheRaf: number | null = null;
   private lastTimerResetTime = 0;
   public remoteResolution = {
     width: 0,
@@ -104,6 +106,7 @@ class HuoshanRTC {
     this.videoElement = new VideoElement(masterIdPrefix, padCode);
     this.videoDomId = this.videoElement.getVideoDomId();
     const videoDom = this.videoElement.createElements();
+    this.videoDomElement = videoDom;
     
     // 将div元素添加到外部容器中
     h5Dom?.appendChild(videoDom);
@@ -567,15 +570,28 @@ class HuoshanRTC {
     streamController!: StreamController;
     inputController!: InputController;
 
-    updateDomCache(): void {
-
-            const videoDom = document.getElementById(this.videoDomId);
+    private updateDomCacheNow(): void {
+            if (!this.videoDomElement || !this.videoDomElement.isConnected) {
+              this.videoDomElement = document.getElementById(this.videoDomId);
+            }
+            const videoDom = this.videoDomElement;
             if (videoDom) {
               this.videoDomRect = videoDom.getBoundingClientRect();
               this.videoDomWidth = videoDom.clientWidth;
               this.videoDomHeight = videoDom.clientHeight;
             }
-          
+    }
+
+    updateDomCache(force = false): void {
+            if (force || !this.videoDomRect) {
+              this.updateDomCacheNow();
+              return;
+            }
+            if (this.domCacheRaf !== null) return;
+            this.domCacheRaf = requestAnimationFrame(() => {
+              this.domCacheRaf = null;
+              this.updateDomCacheNow();
+            });
     }
 
     touchInputHandler!: TouchInputHandler;
