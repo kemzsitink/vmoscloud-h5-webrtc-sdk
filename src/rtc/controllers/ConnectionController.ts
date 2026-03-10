@@ -310,7 +310,6 @@ export class ConnectionController {
         const err = error instanceof Error ? error : new Error("Join room failed");
         this.rtc.addReportInfo({ describe: "加入房间失败", error: err });
         this.rtc.sendEventReport("error");
-        console.log("进房错误", err);
         this.rtc.callbacks.onConnectFail({ code: (err as Error & { code?: number }).code, msg: err.message });
       }
     })();

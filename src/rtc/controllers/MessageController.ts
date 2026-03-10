@@ -77,7 +77,6 @@ export class MessageController {
   onRemoteVideoFirstFrame(): void {
     this.rtc.engine?.on(VERTC.events.onRemoteVideoFirstFrame, (event: { width: number; height: number }) => {
       void (async (): Promise<void> => {
-        console.log("视频首帧渲染回调", event);
         try {
           if (!this.rtc.isFirstRotate) {
             await this.rtc.uiController.initRotateScreen(event.width, event.height);

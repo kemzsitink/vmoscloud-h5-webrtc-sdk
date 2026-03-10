@@ -94,7 +94,6 @@ export class StreamController {
             }
       ),
     });
-    console.log("注入视频到相机", message);
     void this.rtc.sendUserMessage(userId, message);
   }
 }

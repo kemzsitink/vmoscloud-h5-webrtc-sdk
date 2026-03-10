@@ -87,7 +87,6 @@ export default class ScreenshotOverlay {
     this.video = this.videoContainer.querySelector("video");
 
     if (!this.video) {
-      console.log("Video is not ready or failed to load");
       return;
     }
 
@@ -108,7 +107,6 @@ export default class ScreenshotOverlay {
 
   public resizeScreenshot(width: number, height: number): void {
     if (!this.canvas || !this.context) {
-      console.log("Canvas or context is not initialized.");
       return;
     }
 

@@ -86,7 +86,6 @@ class HuoshanRTC {
   public audioDeviceId!: string;
 
   constructor(viewId: string, params: RTCOptions, callbacks: SDKCallbacks, logTime: LogTime) {
-    // console.log("HuoshanRTC initialized", params);
     const { masterIdPrefix, padCode } = params;
     this.initDomId = viewId;
     this.options = params;
@@ -211,7 +210,6 @@ class HuoshanRTC {
       clearTimeout(this.autoRecoveryTimer);
     }
     this.autoRecoveryTimer = setTimeout(() => {
-      console.log("触发无操作回收了");
       void this.stop();
       this.callbacks.onAutoRecoveryTime();
     }, this.options.autoRecoveryTime * 1000);
