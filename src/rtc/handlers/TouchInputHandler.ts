@@ -52,20 +52,23 @@ export class TouchInputHandler {
   private syncDimensions(): void {
     this.rtc.updateDomCache(true);
     const rtc = this.rtc;
-    const { videoDomWidth, videoDomHeight, rotateType, remoteResolution } = rtc;
+    const { videoDomWidth, videoDomHeight, rotateType, remoteResolution, videoDomRect } = rtc;
 
-    const bigSide = videoDomWidth > videoDomHeight ? videoDomWidth : videoDomHeight;
-    const smallSide = videoDomWidth > videoDomHeight ? videoDomHeight : videoDomWidth;
+    const rectWidth = videoDomRect?.width ?? videoDomWidth;
+    const rectHeight = videoDomRect?.height ?? videoDomHeight;
+    const hasRemoteResolution = remoteResolution.width > 0 && remoteResolution.height > 0;
 
-    let w = rotateType === 1 ? bigSide : smallSide;
-    let h = rotateType === 1 ? smallSide : bigSide;
+    let w = hasRemoteResolution ? remoteResolution.width : rectWidth;
+    let h = hasRemoteResolution ? remoteResolution.height : rectHeight;
 
-    if (rotateType === 1 && remoteResolution.height > remoteResolution.width) {
-      w = smallSide;
-      h = bigSide;
-    } else if (rotateType === 0 && remoteResolution.width > remoteResolution.height) {
-      w = bigSide;
-      h = smallSide;
+    if (hasRemoteResolution) {
+      if (rotateType === 1 && remoteResolution.height > remoteResolution.width) {
+        w = remoteResolution.height;
+        h = remoteResolution.width;
+      } else if (rotateType === 0 && remoteResolution.width > remoteResolution.height) {
+        w = remoteResolution.height;
+        h = remoteResolution.width;
+      }
     }
 
     this.touchConfig.widthPixels = w | 0;
@@ -260,9 +263,19 @@ export class TouchInputHandler {
             ? Number(rotationTouch.rotationAngle.toFixed(3))
             : 0;
 
+        if (this.touchConfig.widthPixels > 0 && this.touchConfig.heightPixels > 0 && rectWidth > 0 && rectHeight > 0) {
+          const scaleX = this.touchConfig.widthPixels / rectWidth;
+          const scaleY = this.touchConfig.heightPixels / rectHeight;
+          x = x * scaleX;
+          y = y * scaleY;
+        }
+
+        const ix = Math.min(Math.max(x, 0), this.touchConfig.widthPixels > 0 ? this.touchConfig.widthPixels - 1 : x) | 0;
+        const iy = Math.min(Math.max(y, 0), this.touchConfig.heightPixels > 0 ? this.touchConfig.heightPixels - 1 : y) | 0;
+
         coords.push({
-          x: x | 0,
-          y: y | 0,
+          x: ix,
+          y: iy,
           pressure: poolCoord.pressure,
           size: poolCoord.size,
           touchMajor: poolCoord.touchMajor,
