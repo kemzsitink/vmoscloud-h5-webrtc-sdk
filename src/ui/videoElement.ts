@@ -41,7 +41,11 @@ export class VideoElement {
       touchAction: "none",
       userSelect: "none",
       webkitUserSelect: "none",
+      webkitTouchCallout: "none",
     });
+    this.mainElement.oncontextmenu = (event: Event): void => {
+      event.preventDefault();
+    };
 
     // Dedicated container for the SDK to inject its video element
     const videoContainer = document.createElement("div");
@@ -54,6 +58,9 @@ export class VideoElement {
       left: "0",
       overflow: "hidden",
     });
+    videoContainer.oncontextmenu = (event: Event): void => {
+      event.preventDefault();
+    };
 
     this.mainElement.appendChild(videoContainer);
 
@@ -65,7 +72,16 @@ export class VideoElement {
             if (node.nodeName.toLowerCase() === "video") {
               const videoElement = node as HTMLVideoElement;
               videoElement.disablePictureInPicture = true;
+              videoElement.disableRemotePlayback = true;
+              videoElement.controls = false;
               videoElement.playsInline = true;
+              videoElement.setAttribute("disablePictureInPicture", "");
+              videoElement.setAttribute("disableremoteplayback", "");
+              videoElement.setAttribute("playsinline", "");
+              videoElement.setAttribute("controlsList", "nodownload noplaybackrate noremoteplayback");
+              videoElement.oncontextmenu = (event: Event): void => {
+                event.preventDefault();
+              };
 
               // Apply hardware acceleration CSS to push to GPU
               Object.assign(videoElement.style, {
@@ -75,6 +91,8 @@ export class VideoElement {
                 willChange: "transform",
                 backfaceVisibility: "hidden",
                 perspective: "1000",
+                pointerEvents: "none",
+                userSelect: "none",
               });
             }
           });
