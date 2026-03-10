@@ -97,6 +97,7 @@ export interface SDKRunInformation {
         rtt?: number;
         e2eDelay?: number;
         jitterBufferDelay?: number;
+        target?: number;
     };
     [key: string]: CallbackArg;
 }
@@ -268,3 +269,4 @@ export interface RTCInstance {
     masterIdPrefix?: string;
     sendUserMessage: (userId: string, message: string, notSendInGroups?: boolean) => Promise<RTCResult>;
 }
+

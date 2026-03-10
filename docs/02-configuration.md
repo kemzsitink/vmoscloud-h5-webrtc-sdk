@@ -18,7 +18,7 @@
 - `enableMicrophone` (default: `true`)
 - `enableCamera` (default: `true`)
 - `disable` (default: `false`)
-- `latencyTarget` (default: `0`)
+- `latencyTarget` (default: `0`, ms; adaptive tuning may raise for stability)
 
 ## deviceInfo fields
 
@@ -64,3 +64,4 @@ const params = {
   },
 };
 ```
+

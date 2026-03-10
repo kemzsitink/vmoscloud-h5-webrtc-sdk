@@ -106,7 +106,7 @@ class ArmcloudEngine {
       saveCloudClipboard: params.deviceInfo.saveCloudClipboard ?? true, // 云机剪切板回调开关
       videoDeviceId: params.deviceInfo.videoDeviceId ?? "", // 摄像头ID
       audioDeviceId: params.deviceInfo.audioDeviceId ?? "", // 麦克风ID
-      latencyTarget: params.latencyTarget ?? 0, // 延时目标 (0ms for absolute minimum latency)
+      latencyTarget: params.latencyTarget ?? 0, // latency target (0ms initial target; adaptive tuning may raise for stability)
     };
 
     const noop = (): void => undefined;
@@ -551,6 +551,10 @@ class ArmcloudEngine {
 }
 
 export default ArmcloudEngine;
+
+
+
+
 
 
 

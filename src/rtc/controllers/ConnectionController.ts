@@ -1,14 +1,101 @@
 import type HuoshanRTC from "../huoshanRtc";
-import VERTC, { AudioProfileType } from "../../vendor/volcengine-rtc";
+import VERTC, { AudioProfileType, StreamIndex } from "../../vendor/volcengine-rtc";
 import huoshanGroupRtc from "../huoshanGroupRtc";
 import { addInputElement } from "../../features/input";
 import type { RTCInstance, RTCOptions } from "../../core/types";
+import type { RemoteStreamStats } from "../../vendor/volcengine-rtc";
 
 export class ConnectionController {
+  private latencyTargetMs = 0;
+  private lastLatencyTuneAt = 0;
+  private latencyGoodStreak = 0;
+  private latencyBadStreak = 0;
+  private lastJitterStepperIntervalMs: number | null = null;
+  private lastJitterStepperMaxDiffCount: number | null = null;
+
   constructor(private rtc: HuoshanRTC) {}
 
   isSupported(): Promise<boolean> {
     return VERTC.isSupported();
+  }
+
+  private updateJitterStepper(intervalMs: number, maxDiffCount: number): void {
+    if (
+      this.lastJitterStepperIntervalMs === intervalMs &&
+      this.lastJitterStepperMaxDiffCount === maxDiffCount
+    ) {
+      return;
+    }
+
+    VERTC.setParameter("JITTER_STEPPER_INTERVAL_MS", intervalMs);
+    VERTC.setParameter("JITTER_STEPPER_MAX_DIFF_EXCEED_COUNT", maxDiffCount);
+
+    this.lastJitterStepperIntervalMs = intervalMs;
+    this.lastJitterStepperMaxDiffCount = maxDiffCount;
+  }
+
+  private tuneJitterTarget(event: RemoteStreamStats): void {
+    if (!this.rtc.engine) return;
+    if (event.userId !== this.rtc.options.clientId) return;
+
+    const now = Date.now();
+    if (now - this.lastLatencyTuneAt < 1800) return;
+    this.lastLatencyTuneAt = now;
+
+    const { audioStats, videoStats } = event;
+    const lossRate = Math.max(audioStats.audioLossRate ?? 0, videoStats.videoLossRate ?? 0);
+    const stallCount = (audioStats.stallCount ?? 0) + (videoStats.stallCount ?? 0);
+    const stallDuration = (audioStats.stallDuration ?? 0) + (videoStats.stallDuration ?? 0);
+    const jitterDelay = audioStats.jitterBufferDelay ?? 0;
+
+    const severe = lossRate >= 0.08 || stallDuration >= 300 || stallCount >= 2;
+    const bad =
+      severe ||
+      lossRate >= 0.03 ||
+      stallDuration >= 120 ||
+      stallCount >= 1 ||
+      jitterDelay > this.latencyTargetMs + 12;
+    const good =
+      lossRate <= 0.005 &&
+      stallCount === 0 &&
+      stallDuration === 0 &&
+      jitterDelay <= this.latencyTargetMs + 6;
+
+    if (bad) {
+      this.latencyBadStreak += 1;
+      this.latencyGoodStreak = 0;
+    } else if (good) {
+      this.latencyGoodStreak += 1;
+      this.latencyBadStreak = 0;
+    } else {
+      this.latencyBadStreak = 0;
+      this.latencyGoodStreak = 0;
+    }
+
+    const userFloor = this.rtc.options.latencyTarget ?? 0;
+    const minTarget = Math.max(0, userFloor);
+    const stabilityFloor = userFloor === 0 ? 10 : userFloor;
+    const maxTarget = Math.max(minTarget, 50);
+
+    let target = this.latencyTargetMs;
+
+    if (this.latencyBadStreak >= 1) {
+      target += severe ? 10 : 5;
+      this.latencyBadStreak = 0;
+    } else if (this.latencyGoodStreak >= 3 && target > minTarget) {
+      const floor = this.latencyGoodStreak >= 6 ? minTarget : stabilityFloor;
+      target = Math.max(floor, target - 5);
+      this.latencyGoodStreak = 0;
+    }
+
+    if (target < minTarget) target = minTarget;
+    if (target > maxTarget) target = maxTarget;
+
+    if (target !== this.latencyTargetMs) {
+      this.latencyTargetMs = target;
+      const streamIndex = event.isScreen ? StreamIndex.STREAM_INDEX_SCREEN : StreamIndex.STREAM_INDEX_MAIN;
+      this.rtc.engine.setJitterBufferTarget(event.userId, streamIndex, target, true);
+    }
   }
 
   createEngine(): void {
@@ -38,6 +125,7 @@ export class ConnectionController {
     } catch (error) {
       console.warn("Artistic Latency Config Error:", error);
     }
+    this.latencyTargetMs = this.rtc.options.latencyTarget ?? 0;
 
     this.rtc.engine = VERTC.createBLWEngine(this.rtc.options.appId);
     void this.rtc.engine.setRemoteStreamRenderSync(false);
@@ -88,24 +176,26 @@ export class ConnectionController {
         rtt: videoStats.rtt,
         e2eDelay: videoStats.e2eDelay,
         jitterBufferDelay: audioStats.jitterBufferDelay,
+        target: this.latencyTargetMs,
       };
 
       try {
         if (latencyInfo.rtt > 0) {
           if (latencyInfo.rtt < 50) {
-            VERTC.setParameter("JITTER_STEPPER_INTERVAL_MS", 16);
-            VERTC.setParameter("JITTER_STEPPER_MAX_DIFF_EXCEED_COUNT", 1);
+            this.updateJitterStepper(16, 1);
           } else if (latencyInfo.rtt < 100) {
-            VERTC.setParameter("JITTER_STEPPER_INTERVAL_MS", 33);
-            VERTC.setParameter("JITTER_STEPPER_MAX_DIFF_EXCEED_COUNT", 2);
+            this.updateJitterStepper(33, 2);
           } else {
-            VERTC.setParameter("JITTER_STEPPER_INTERVAL_MS", 60);
-            VERTC.setParameter("JITTER_STEPPER_MAX_DIFF_EXCEED_COUNT", 5);
+            this.updateJitterStepper(60, 5);
           }
         }
       } catch {
         // ignore dynamic tuning failure
       }
+
+      this.tuneJitterTarget(event);
+
+      latencyInfo.target = this.latencyTargetMs;
 
       this.rtc.callbacks.onRunInformation({
         ...event,
@@ -261,3 +351,10 @@ export class ConnectionController {
     }
   }
 }
+
+
+
+
+
+
+

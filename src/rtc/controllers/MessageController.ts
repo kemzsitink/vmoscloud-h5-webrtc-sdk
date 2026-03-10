@@ -108,7 +108,7 @@ export class MessageController {
           this.rtc.options.clientId,
           StreamIndex.STREAM_INDEX_MAIN,
           this.rtc.options.latencyTarget ?? 0,
-          false
+          true
         );
       }
 
@@ -299,3 +299,5 @@ export class MessageController {
     });
   }
 }
+
+
