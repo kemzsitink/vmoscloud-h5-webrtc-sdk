@@ -12,8 +12,34 @@ export class ConnectionController {
   private latencyBadStreak = 0;
   private lastJitterStepperIntervalMs: number | null = null;
   private lastJitterStepperMaxDiffCount: number | null = null;
+  private readonly resolutionOrder = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+  private readonly frameRateOrder = [5, 9, 6, 7, 8, 1, 2, 3, 4];
+  private readonly bitrateOrder = [13, 14, 15, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+  private currentDefinitionId: number;
+  private currentFrameRateId: number;
+  private currentBitrateId: number;
+  private lastQualityChangeAt = 0;
+  private goodRttSince = 0;
+  private badRttSince = 0;
 
-  constructor(private rtc: HuoshanRTC) {}
+  constructor(private rtc: HuoshanRTC) {
+    const videoStream = this.rtc.options.videoStream;
+    this.currentDefinitionId = this.normalizeQualityId(
+      this.resolutionOrder,
+      videoStream?.resolution,
+      12
+    );
+    this.currentFrameRateId = this.normalizeQualityId(
+      this.frameRateOrder,
+      videoStream?.frameRate,
+      2
+    );
+    this.currentBitrateId = this.normalizeQualityId(
+      this.bitrateOrder,
+      videoStream?.bitrate,
+      3
+    );
+  }
 
   isSupported(): Promise<boolean> {
     return VERTC.isSupported();
@@ -95,6 +121,119 @@ export class ConnectionController {
       this.latencyTargetMs = target;
       const streamIndex = event.isScreen ? StreamIndex.STREAM_INDEX_SCREEN : StreamIndex.STREAM_INDEX_MAIN;
       this.rtc.engine.setJitterBufferTarget(event.userId, streamIndex, target, true);
+    }
+  }
+
+  private normalizeQualityId(order: number[], value: number | undefined, fallback: number): number {
+    if (typeof value !== "number") return fallback;
+    return order.includes(value) ? value : fallback;
+  }
+
+  private stepQualityDown(): boolean {
+    const bitrateIndex = this.bitrateOrder.indexOf(this.currentBitrateId);
+    if (bitrateIndex > 0) {
+      const next = this.bitrateOrder[bitrateIndex - 1];
+      if (next === undefined) return false;
+      this.currentBitrateId = next;
+      return true;
+    }
+    const frameIndex = this.frameRateOrder.indexOf(this.currentFrameRateId);
+    if (frameIndex > 0) {
+      const next = this.frameRateOrder[frameIndex - 1];
+      if (next === undefined) return false;
+      this.currentFrameRateId = next;
+      return true;
+    }
+    const resolutionIndex = this.resolutionOrder.indexOf(this.currentDefinitionId);
+    if (resolutionIndex > 0) {
+      const next = this.resolutionOrder[resolutionIndex - 1];
+      if (next === undefined) return false;
+      this.currentDefinitionId = next;
+      return true;
+    }
+    return false;
+  }
+
+  private stepQualityUp(): boolean {
+    const bitrateIndex = this.bitrateOrder.indexOf(this.currentBitrateId);
+    if (bitrateIndex < this.bitrateOrder.length - 1) {
+      const next = this.bitrateOrder[bitrateIndex + 1];
+      if (next === undefined) return false;
+      this.currentBitrateId = next;
+      return true;
+    }
+    const frameIndex = this.frameRateOrder.indexOf(this.currentFrameRateId);
+    if (frameIndex < this.frameRateOrder.length - 1) {
+      const next = this.frameRateOrder[frameIndex + 1];
+      if (next === undefined) return false;
+      this.currentFrameRateId = next;
+      return true;
+    }
+    const resolutionIndex = this.resolutionOrder.indexOf(this.currentDefinitionId);
+    if (resolutionIndex < this.resolutionOrder.length - 1) {
+      const next = this.resolutionOrder[resolutionIndex + 1];
+      if (next === undefined) return false;
+      this.currentDefinitionId = next;
+      return true;
+    }
+    return false;
+  }
+
+  private applyStreamConfig(): void {
+    this.rtc.options.videoStream = {
+      ...this.rtc.options.videoStream,
+      resolution: this.currentDefinitionId,
+      frameRate: this.currentFrameRateId,
+      bitrate: this.currentBitrateId,
+    };
+    this.rtc.setStreamConfig({
+      definitionId: this.currentDefinitionId,
+      framerateId: this.currentFrameRateId,
+      bitrateId: this.currentBitrateId,
+    });
+  }
+
+  private adaptStreamQuality(event: RemoteStreamStats, rtt: number | undefined): void {
+    if (event.userId && event.userId !== this.rtc.options.clientId) return;
+    if (!rtt || rtt <= 0) return;
+
+    const now = Date.now();
+    if (rtt >= 120) {
+      if (!this.badRttSince) this.badRttSince = now;
+      this.goodRttSince = 0;
+    } else if (rtt <= 60) {
+      if (!this.goodRttSince) this.goodRttSince = now;
+      this.badRttSince = 0;
+    } else {
+      this.goodRttSince = 0;
+      this.badRttSince = 0;
+      return;
+    }
+
+    const degradeReady =
+      this.badRttSince > 0 &&
+      now - this.badRttSince >= 1000 &&
+      now - this.lastQualityChangeAt >= 1500;
+    const upgradeReady =
+      this.goodRttSince > 0 &&
+      now - this.goodRttSince >= 8000 &&
+      now - this.lastQualityChangeAt >= 8000;
+
+    if (degradeReady) {
+      if (this.stepQualityDown()) {
+        this.lastQualityChangeAt = now;
+        this.badRttSince = 0;
+        this.applyStreamConfig();
+      }
+      return;
+    }
+
+    if (upgradeReady) {
+      if (this.stepQualityUp()) {
+        this.lastQualityChangeAt = now;
+        this.goodRttSince = 0;
+        this.applyStreamConfig();
+      }
     }
   }
 
@@ -194,6 +333,7 @@ export class ConnectionController {
       }
 
       this.tuneJitterTarget(event);
+      this.adaptStreamQuality(event, latencyInfo.rtt);
 
       latencyInfo.target = this.latencyTargetMs;
 
